@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import { MercatorCoordinate, type CustomLayerInterface, type Map as MLMap } from "maplibre-gl";
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { api } from "../api";
 import { LinePill, useStore } from "../store";
 
@@ -192,6 +193,8 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
   const [result, setResult] = useState<any>(null);
   const [top, setTop] = useState<any>(null);
   const el = useRef<HTMLDivElement>(null);
+  const mini = useRef<HTMLCanvasElement>(null);
+  const touchScreen = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
   const controls = useRef({ left: () => {}, right: () => {}, jump: () => {}, bike: () => {} });
   const cr = s.statics?.commuter;
   const route = s.routeById.get(line) ?? cr?.routes.find((r) => r.id === line);
@@ -318,6 +321,82 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
     shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.08;
     scene.add(shadow);
 
+    // Real look: a motion-captured human (Mixamo "Michelle", animated with the Run / Idle / Walk clips that ship
+    // with the three.js "Soldier" example; both use the same Mixamo skeleton). The cartoon rig is the fallback.
+    const human = new THREE.Group();
+    human.scale.setScalar(1.6);
+    runner.add(human);
+    let mixer: THREE.AnimationMixer | null = null;
+    let retarget: Map<string, THREE.Quaternion> | null = null;
+    let personRoot: THREE.Object3D | null = null, sourceRoot: THREE.Object3D | null = null;
+    // rotation of every node relative to its model root
+    const modelQuats = (root: THREE.Object3D) => {
+      const out = new Map<string, THREE.Quaternion>();
+      const walk = (o: THREE.Object3D, acc: THREE.Quaternion) => {
+        const q = acc.clone().multiply(o.quaternion);
+        out.set(o.name, q);
+        for (const c of o.children) walk(c, q);
+      };
+      for (const c of root.children) walk(c, new THREE.Quaternion());
+      return out;
+    };
+    const applyRetarget = () => {
+      if (!retarget || !personRoot || !sourceRoot) return;
+      const now = modelQuats(sourceRoot);
+      const walk = (o: THREE.Object3D, acc: THREE.Quaternion) => {
+        const corr = retarget!.get(o.name), src = now.get(o.name);
+        let q: THREE.Quaternion;
+        if (corr && src) {
+          q = FLIP.clone().multiply(src).multiply(corr); // wanted rotation in model space
+          o.quaternion.copy(acc.clone().invert().multiply(q)); // back to the bone's local space
+        } else q = acc.clone().multiply(o.quaternion);
+        for (const c of o.children) walk(c, q);
+      };
+      for (const c of personRoot.children) walk(c, new THREE.Quaternion());
+    };
+    const FLIP = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI), FLIP_INV = FLIP.clone().invert();
+    const acts: Record<string, THREE.AnimationAction> = {};
+    let cur = "";
+    let disposed = false;
+    if (look === "real") {
+      const loader = new GLTFLoader();
+      Promise.all([loader.loadAsync("/models/Michelle.glb"), loader.loadAsync("/models/Soldier.glb")])
+        .then(([person, moves]) => {
+          if (disposed) return;
+          person.scene.traverse((o: any) => { if (o.isMesh) o.frustumCulled = false; });
+          human.add(person.scene);
+          // the soldier is never drawn: it only plays the clips, and each frame its bones' rotation change from
+          // its rest pose is applied on top of Michelle's own rest pose (the two rigs' bone axes differ)
+          const restT = modelQuats(person.scene);
+          // the soldier's file pose isn't a T-pose; its "TPose" clip is, so measure its rest from that clip
+          const tpose = moves.animations.find((a) => a.name === "TPose");
+          if (tpose) { const m0 = new THREE.AnimationMixer(moves.scene); m0.clipAction(tpose).play(); m0.update(0); }
+          const restS = modelQuats(moves.scene);
+          retarget = new Map();
+          for (const [name, tq] of restT) {
+            const sq = restS.get(name);
+            // the two models face opposite ways, so turn each motion half a turn before applying it
+            if (name.startsWith("mixamorig") && sq) retarget.set(name, sq.clone().invert().multiply(FLIP_INV).multiply(tq));
+          }
+          personRoot = person.scene;
+          sourceRoot = moves.scene;
+          mixer = new THREE.AnimationMixer(moves.scene);
+          for (const clip of moves.animations) acts[clip.name] = mixer.clipAction(clip);
+          rig.visible = false;
+        })
+        .catch((e) => console.warn("[street-runner] character model failed, using the cartoon runner", e));
+    }
+    const play = (name: string, timeScale = 1) => {
+      const a = acts[name];
+      if (!a) return;
+      a.timeScale = timeScale;
+      if (cur === name) return;
+      a.reset().fadeIn(0.25).play();
+      if (cur && acts[cur]) acts[cur].fadeOut(0.25);
+      cur = name;
+    };
+    let lastRender = performance.now();
+
     const geo = { barrier: new THREE.BoxGeometry(2.4, 1, 0.4), cone: new THREE.ConeGeometry(0.5, 1.1, 14), bus: new THREE.BoxGeometry(2.4, 3, 9), train: new THREE.BoxGeometry(2.8, 3.4, 22), token: new THREE.CylinderGeometry(0.5, 0.5, 0.12, 24), shield: new THREE.SphereGeometry(0.5, 16, 12) };
     geo.token.rotateX(Math.PI / 2);
     for (const g of Object.values(geo)) g.translate(0, 0, 0);
@@ -430,6 +509,18 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
         bubble.visible = state.shield > 0;
         // pose: run cycle, pedaling on the bike, or a tuck in the air
         const onBike = state.bike > 0;
+        const nowR = performance.now();
+        const rdt = Math.min(0.1, (nowR - lastRender) / 1000);
+        lastRender = nowR;
+        if (mixer) {
+          const going = started && nowR >= goAt && !state.over;
+          if (!going) play("Idle");
+          else if (onBike) play("Walk", 1.6);
+          else play("Run", Math.min(1.7, Math.max(0.95, state.speed / 22)));
+          human.position.set(0, onBike ? 0.22 : 0, onBike ? -0.2 : 0);
+          mixer.update(rdt);
+          applyRetarget();
+        }
         const air = state.y > 0.05;
         const ph = state.run * (onBike ? 0.38 : 0.45);
         const sw = Math.sin(ph);
@@ -535,19 +626,44 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
         map.setPaintProperty("building-3d", "fill-extrusion-vertical-gradient", true);
       }
       for (const l of map.getStyle().layers) if (/shield|oneway/.test(l.id)) map.setLayoutProperty(l.id, "visibility", "none");
+      if (look === "real") {
+        // no flat map icons or labels; asphalt roads, concrete sidewalks, real greens and water
+        for (const l of map.getStyle().layers) {
+          try {
+            if (l.type === "symbol") {
+              // street names stay queryable for the HUD, just invisible
+              if (l.id.startsWith("highway-name")) map.setPaintProperty(l.id, "text-opacity", 0);
+              else map.setLayoutProperty(l.id, "visibility", "none");
+            } else if (l.type === "line" && /^(road|bridge|tunnel)_/.test(l.id) && !/rail|hatching/.test(l.id)) {
+              map.setPaintProperty(l.id, "line-color", /casing/.test(l.id) ? "#b5b0a6" : /path|pedestrian/.test(l.id) ? "#cbc5ba" : "#46484d");
+            } else if (l.id === "background") map.setPaintProperty(l.id, "background-color", "#c4bfb5");
+            else if (l.type === "fill" && /park|grass|wood|pitch|cemetery/.test(l.id)) map.setPaintProperty(l.id, "fill-color", "#6b8f4c");
+            else if (l.id === "water") map.setPaintProperty(l.id, "fill-color", "#4c7896");
+            else if (l.type === "fill" && /^landuse_/.test(l.id)) map.setPaintProperty(l.id, "fill-color", "#bfb9ae");
+          } catch { /* layer without that property */ }
+        }
+        // painted lane markings on real streets
+        map.addLayer({
+          id: "road-markings", type: "line", source: "openmaptiles", "source-layer": "transportation",
+          filter: ["in", ["get", "class"], ["literal", ["primary", "secondary", "tertiary", "trunk", "minor"]]],
+          paint: { "line-color": "#f1efe4", "line-width": ["interpolate", ["exponential", 2], ["zoom"], 15, 0.25, 20, 2.6], "line-dasharray": [5, 5], "line-opacity": 0.8 },
+        } as any, "building");
+      }
       try {
         (map as any).setSky(look === "real"
-          ? { "sky-color": "#8fbde8", "horizon-color": "#e4ecf3", "fog-color": "#e9eef3", "sky-horizon-blend": 0.7, "horizon-fog-blend": 0.75, "fog-ground-blend": 0.5, "atmosphere-blend": 0.6 }
+          ? { "sky-color": "#6fa3d8", "horizon-color": "#f0d6ae", "fog-color": "#e6d3b8", "sky-horizon-blend": 0.6, "horizon-fog-blend": 0.7, "fog-ground-blend": 0.62, "atmosphere-blend": 0.75 }
           : { "sky-color": "#6fb1ff", "horizon-color": "#ffd6a3", "fog-color": "#ffe6c7", "sky-horizon-blend": 0.55, "horizon-fog-blend": 0.6, "fog-ground-blend": 0.35, "atmosphere-blend": 0.8 });
       } catch { /* older style spec */ }
       try {
-        map.setLight({ anchor: "viewport", color: look === "real" ? "#ffffff" : "#fff4e0", intensity: look === "real" ? 0.32 : 0.45, position: [1.2, 220, 32] } as any);
+        map.setLight(look === "real"
+          ? { anchor: "map", color: "#fff1dc", intensity: 0.5, position: [1.5, 235, 38] } as any
+          : { anchor: "viewport", color: "#fff4e0", intensity: 0.45, position: [1.2, 220, 32] } as any);
       } catch { /* ignore */ }
       // the line as a real track bed with sleepers and rails, glowing in the line's color
       const below = map.getStyle().layers.find((x) => x.type === "symbol")?.id;
       const W = (a: number, b: number) => ["interpolate", ["exponential", 2], ["zoom"], 15, a, 20, b] as any;
       map.addSource("route", { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: coords } } as any });
-      map.addLayer({ id: "route-glow", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": route.color, "line-width": W(8, 150), "line-opacity": look === "real" ? 0.18 : 0.35, "line-blur": W(2, 30) } }, below);
+      map.addLayer({ id: "route-glow", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": route.color, "line-width": W(8, 150), "line-opacity": look === "real" ? 0 : 0.35, "line-blur": W(2, 30) } }, below);
       if (!map.hasImage("ballast")) map.addImage("ballast", ballastImage());
       map.addLayer({ id: "route-bed", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: look === "real" ? { "line-pattern": "ballast", "line-width": W(5, 110) } : { "line-color": "#4a4f5c", "line-width": W(5, 110) } }, below);
       map.addLayer({ id: "route-sleepers", type: "line", source: "route", paint: { "line-color": "#7a634c", "line-width": W(4, 96), "line-dasharray": [0.08, 0.32] } }, below);
@@ -600,6 +716,49 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
     el.current.addEventListener("dblclick", dbl);
     const host = el.current;
 
+    const drawMini = (me: { lon: number; lat: number }, bearing: number) => {
+      const c = mini.current;
+      if (!c) return;
+      const g = c.getContext("2d")!;
+      const W = c.width, R = W / 2, mpp = 3; // meters per pixel
+      const rot = (-bearing * Math.PI) / 180, cs = Math.cos(rot), sn = Math.sin(rot);
+      const P = (lon: number, lat: number) => {
+        const x = ((lon - me.lon) * mLon(me.lat)) / mpp, y = (-(lat - me.lat) * M_LAT) / mpp;
+        return [R + x * cs - y * sn, R + x * sn + y * cs];
+      };
+      g.clearRect(0, 0, W, W);
+      g.save();
+      g.beginPath(); g.arc(R, R, R - 3, 0, Math.PI * 2); g.clip();
+      g.fillStyle = "#2b3a2f"; g.fillRect(0, 0, W, W);
+      g.strokeStyle = "rgba(255,255,255,.08)"; g.lineWidth = 1;
+      for (let i = -4; i <= 4; i++) { g.beginPath(); g.moveTo(0, R + i * 24); g.lineTo(W, R + i * 24); g.stroke(); g.beginPath(); g.moveTo(R + i * 24, 0); g.lineTo(R + i * 24, W); g.stroke(); }
+      g.strokeStyle = route.color; g.lineWidth = 6; g.lineCap = "round"; g.lineJoin = "round";
+      g.beginPath();
+      let pen = false;
+      for (const [lon, lat] of coords) {
+        if (Math.abs(lat - me.lat) > 0.01 || Math.abs(lon - me.lon) > 0.014) { pen = false; continue; }
+        const [x, y] = P(lon, lat);
+        if (pen) g.lineTo(x, y); else { g.moveTo(x, y); pen = true; }
+      }
+      g.stroke();
+      for (const st of stations) {
+        const [x, y] = P(st.lon, st.lat);
+        if (x < -10 || y < -10 || x > W + 10 || y > W + 10) continue;
+        g.fillStyle = "#fff"; g.strokeStyle = route.color; g.lineWidth = 3;
+        g.beginPath(); g.arc(x, y, 5, 0, Math.PI * 2); g.fill(); g.stroke();
+      }
+      g.restore();
+      // you: an arrow pointing the way you run
+      g.fillStyle = "#fff"; g.strokeStyle = "#000"; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(R, R - 11); g.lineTo(R + 8, R + 8); g.lineTo(R, R + 3); g.lineTo(R - 8, R + 8); g.closePath(); g.fill(); g.stroke();
+      // rim and north marker
+      g.strokeStyle = "rgba(0,0,0,.85)"; g.lineWidth = 5; g.beginPath(); g.arc(R, R, R - 3, 0, Math.PI * 2); g.stroke();
+      const [nx, ny] = P(me.lon, me.lat + 0.01);
+      const d = Math.hypot(nx - R, ny - R) || 1;
+      const ex = R + ((nx - R) / d) * (R - 12), ey = R + ((ny - R) / d) * (R - 12);
+      g.fillStyle = "#0b0b0b"; g.beginPath(); g.arc(ex, ey, 9, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#fff"; g.font = "800 12px Inter, system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("N", ex, ey + 0.5);
+    };
     let raf = 0, last = performance.now(), hudT = 0, streetT = 0, street = "";
     const end = () => {
       state.over = true;
@@ -647,8 +806,9 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       let d = target - state.bearing;
       d = ((d + 540) % 360) - 180;
       state.bearing += d * Math.min(1, dt * 3);
-      const [clon, clat] = offset(me.lon, me.lat, me.e, me.n, state.x * 0.5, 22);
-      map.jumpTo({ center: [clon, clat], bearing: state.bearing, pitch: 77, zoom: 19.35 });
+      const real = look === "real";
+      const [clon, clat] = offset(me.lon, me.lat, me.e, me.n, state.x * 0.5, real ? 15 : 22);
+      map.jumpTo({ center: [clon, clat], bearing: state.bearing, pitch: real ? 80 : 77, zoom: real ? 19.75 : 19.35 });
       map.triggerRepaint();
 
       streetT += dt;
@@ -661,6 +821,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       hudT += dt;
       if (hudT > 0.1) {
         hudT = 0;
+        if (look === "real") drawMini(me, state.bearing);
         const k = Math.floor((startS + state.run) / L), fw = k % 2 === 0;
         const nextSt = signs.map((sg) => ({ name: sg.name, ahead: k * L - startS + (fw ? sg.s : L - sg.s) - state.run })).filter((x) => x.ahead > 0).sort((a, b) => a.ahead - b.ahead)[0];
         setHud({ score: Math.round(state.run) + state.tokens * 10 + state.stations * 50, tokens: state.tokens, distance: Math.round(state.run), next: nextSt ? `${nextSt.name} · ${Math.round(nextSt.ahead)} m` : "", street,
@@ -676,6 +837,8 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       host.removeEventListener("touchstart", ts);
       host.removeEventListener("touchend", te);
       host.removeEventListener("dblclick", dbl);
+      disposed = true;
+      mixer?.stopAllAction();
       map.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -689,7 +852,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="runner">
+    <div className={`runner${look === "real" ? " real" : ""}`}>
       <div ref={el} className="runner-stage" />
       {phase === "playing" && <div className={`speedlines${hud.bike > 0 ? " bike" : ""}`} style={{ opacity: hud.bike > 0 ? 0.9 : Math.max(0, Math.min(0.85, (hud.kmh - 70) / 90)) }} />}
       <div className="runner-top">
@@ -703,7 +866,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
             {hud.bike > 0 && <span key={`b${hud.bike}`} className="sr-bike">🚲 {hud.bike}s</span>}
           </div>
           <div className="sr-speed"><i style={{ width: `${Math.min(100, (hud.kmh / 162) * 100)}%` }} /><b>{hud.kmh} km/h</b></div>
-          {phase === "playing" && hud.count <= 0 && hud.bike <= 0 && hud.bikeCd <= 0 && <div className="sr-hint">Double-click for a 🚲 blue bike</div>}
+          {phase === "playing" && hud.count <= 0 && hud.bike <= 0 && hud.bikeCd <= 0 && <div className="sr-hint">{touchScreen ? "Double-tap" : "Double-click"} for a 🚲 blue bike</div>}
         </div>
       </div>
       {phase === "playing" && hud.count > 0 && hud.count <= 3 && <div key={hud.count} className="sr-count">{hud.count}</div>}
@@ -713,6 +876,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       )}
       {flash && <div className="runner-flash">{flash}</div>}
       {phase === "playing" && hud.clock && <div className="sr-clock">{hud.clock}</div>}
+      {phase === "playing" && look === "real" && <canvas ref={mini} className="sr-mini" width={200} height={200} aria-label="Minimap" />}
       {phase === "playing" && (
         <div className="runner-pad">
           <button onClick={() => controls.current.left()} aria-label="Left">◀</button>

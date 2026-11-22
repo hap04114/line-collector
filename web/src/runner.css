@@ -41,3 +41,31 @@
   background: rgba(11,18,32,.82); border: 2px solid #0b1220; clip-path: polygon(10px 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 10px 100%, 0 50%); }
 .sr-eta { color: #ffd84a; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-weight: 700; }
 .cr-chips .chip.on { outline: 2px solid #80276C; }
+
+/* ---- Real look: cinematic grade, vignette, game HUD, minimap ---- */
+.runner.real .runner-stage { filter: contrast(1.1) saturate(1.08) sepia(.06); }
+.runner.real::after { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: radial-gradient(ellipse at 50% 42%, transparent 52%, rgba(0,0,0,.5) 100%); }
+.runner.real .sr-score { font: 400 44px/1 Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif; letter-spacing: .02em; color: #fff; -webkit-text-stroke: 1.5px #000; text-shadow: 2px 3px 0 #000; }
+.runner.real .sr-coins, .runner.real .sr-dist { background: transparent; border: 0; box-shadow: none; padding: 0 4px; font: 400 24px/1 Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif; text-shadow: 2px 2px 0 #000; -webkit-text-stroke: 1px #000; animation: none; }
+.runner.real .sr-coins { color: #8fd16a; }
+.runner.real .sr-dist { color: #fff; }
+.runner.real .sr-speed { background: rgba(0,0,0,.6); border-color: rgba(0,0,0,.9); border-radius: 3px; height: 14px; }
+.runner.real .sr-speed b { line-height: 10px; font-size: 10px; }
+.runner.real .runner-next { background: rgba(0,0,0,.62) !important; border: 0; border-radius: 4px; box-shadow: none; font-weight: 600; }
+.runner.real .runner-flash, .runner.real .sr-count { color: #fff !important; font-family: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif !important; font-weight: 400 !important; letter-spacing: .03em; -webkit-text-stroke: 2px #000; text-shadow: 3px 4px 0 #000 !important; }
+.runner.real .sr-count.go { color: #8fd16a !important; }
+.runner.real .runner-pad button { background: rgba(0,0,0,.55) !important; color: #fff !important; border: 2px solid rgba(255,255,255,.75) !important; box-shadow: none; border-radius: 50%; width: 64px; height: 64px; }
+.runner.real .runner-pad button.bike-btn { background: rgba(30,123,255,.8) !important; }
+.runner.real .runner-pad button.bike-btn.on { background: rgba(61,220,151,.85) !important; }
+.sr-mini { position: absolute; left: 18px; bottom: calc(var(--safe-bottom, 0px) + 18px); width: 200px; height: 200px; z-index: 2; border-radius: 50%; pointer-events: none; box-shadow: 0 6px 18px rgba(0,0,0,.45); }
+@media (max-width: 640px) {
+  .sr-mini { width: 112px; height: 112px; left: auto; right: 12px; bottom: auto; top: calc(var(--safe-top, 0px) + 150px); }
+  .runner.real .runner-pad button { width: 58px; height: 58px; }
+}
+@media (max-width: 640px) {
+  /* phones: the next-stop bar sits under the score, the clock above the map credits */
+  .runner-next { top: calc(var(--safe-top, 0px) + 112px); max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+  .runner.real .sr-mini { top: calc(var(--safe-top, 0px) + 150px); }
+  .sr-clock { bottom: calc(var(--safe-bottom, 0px) + 128px); font-size: 13px; }
+}
