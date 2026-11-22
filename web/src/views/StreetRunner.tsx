@@ -17,7 +17,33 @@ const M_LAT = 110540;
 const mLon = (lat: number) => 111320 * Math.cos((lat * Math.PI) / 180);
 
 interface Path { pts: [number, number][]; cum: number[]; len: number }
-type Kind = "barrier" | "cone" | "bus" | "token" | "shield";
+type Kind = "barrier" | "cone" | "bus" | "train" | "token" | "shield";
+
+/** Real Boston landmarks; a big sign appears beside the run when the route passes near one. */
+const LANDMARKS: [string, number, number][] = [
+  ["Prudential Center", 42.3471, -71.0825], ["Fenway Park", 42.3467, -71.0972], ["Citgo Sign", 42.3489, -71.0951],
+  ["Museum of Fine Arts", 42.3394, -71.094], ["Symphony Hall", 42.3426, -71.0857], ["Copley Square", 42.3499, -71.0774],
+  ["Boston Public Library", 42.3493, -71.078], ["State House", 42.3588, -71.0638], ["Boston Common", 42.355, -71.0656],
+  ["Faneuil Hall", 42.36, -71.0568], ["TD Garden", 42.3662, -71.0621], ["Zakim Bridge", 42.3687, -71.0612],
+  ["MIT Great Dome", 42.3597, -71.0921], ["Harvard Yard", 42.3744, -71.1169], ["Kendall Square", 42.3625, -71.0862],
+  ["Chinatown Gate", 42.3509, -71.0605], ["New England Aquarium", 42.3592, -71.049], ["South Station", 42.3523, -71.0552],
+  ["Christian Science Center", 42.3445, -71.0853], ["Northeastern University", 42.3398, -71.0892], ["Boston University", 42.3505, -71.1054],
+  ["Longfellow Bridge", 42.3617, -71.0758], ["Old State House", 42.3587, -71.0575], ["Arnold Arboretum", 42.2995, -71.1159],
+  ["Boston College", 42.3355, -71.1685], ["Tufts University", 42.4075, -71.119], ["JFK Library", 42.3164, -71.0342], ["Logan Airport", 42.3656, -71.0096],
+];
+
+function trainTexture(color: string) {
+  const c = document.createElement("canvas");
+  c.width = 256; c.height = 128;
+  const g = c.getContext("2d")!;
+  g.fillStyle = color; g.fillRect(0, 0, 256, 128);
+  g.fillStyle = "#fff"; g.fillRect(0, 86, 256, 10);
+  g.fillStyle = "#1b2433";
+  for (let x = 10; x < 256; x += 42) { g.fillRect(x, 26, 30, 40); }
+  g.fillStyle = "#ffe9a8";
+  for (let x = 14; x < 256; x += 42) { g.fillRect(x, 30, 22, 14); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
 interface Thing { s: number; lane: number; kind: Kind; alive: boolean; mesh: THREE.Object3D; len: number; h: number }
 
 function buildPath(coords: [number, number][]): Path {
@@ -141,14 +167,15 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
     runner.scale.setScalar(SCALE);
     scene.add(runner);
 
-    const geo = { barrier: new THREE.BoxGeometry(2.4, 1, 0.4), cone: new THREE.ConeGeometry(0.5, 1.1, 14), bus: new THREE.BoxGeometry(2.4, 3, 9), token: new THREE.CylinderGeometry(0.5, 0.5, 0.12, 24), shield: new THREE.SphereGeometry(0.5, 16, 12) };
+    const geo = { barrier: new THREE.BoxGeometry(2.4, 1, 0.4), cone: new THREE.ConeGeometry(0.5, 1.1, 14), bus: new THREE.BoxGeometry(2.4, 3, 9), train: new THREE.BoxGeometry(2.8, 3.4, 22), token: new THREE.CylinderGeometry(0.5, 0.5, 0.12, 24), shield: new THREE.SphereGeometry(0.5, 16, 12) };
     geo.token.rotateX(Math.PI / 2);
     for (const g of Object.values(geo)) g.translate(0, 0, 0);
     const mats = {
       barrier: new THREE.MeshStandardMaterial({ map: label("DELAY", "#ff5a5f") }),
       cone: new THREE.MeshStandardMaterial({ color: 0xff7a00 }),
       bus: new THREE.MeshStandardMaterial({ color: 0xffd23f }),
-      token: new THREE.MeshStandardMaterial({ color: 0xffc83d, emissive: 0x6a4a00, metalness: 0.9, roughness: 0.2 }),
+      train: new THREE.MeshStandardMaterial({ map: trainTexture(route.color), emissive: 0x222222, roughness: 0.4, metalness: 0.2 }),
+      token: new THREE.MeshStandardMaterial({ color: 0xffd84a, emissive: 0xc79100, emissiveIntensity: 0.9, metalness: 0.6, roughness: 0.25 }),
       shield: new THREE.MeshStandardMaterial({ color: 0x7ad7ff, emissive: 0x1a5070 }),
     };
     const things: Thing[] = [];
@@ -157,6 +184,18 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       const m = new THREE.Mesh(new THREE.PlaneGeometry(9, 2), new THREE.MeshBasicMaterial({ map: label(`🚉 ${st.name}`, route.color), side: THREE.DoubleSide, transparent: true }));
       scene.add(m);
       signs.push({ s: st.s, mesh: m, name: st.name, counted: false });
+    }
+
+    const marks: { s: number; side: number; mesh: THREE.Mesh; name: string; shown: boolean }[] = [];
+    for (const [name, lat, lon] of LANDMARKS) {
+      const pr = project(path, lon, lat);
+      if (pr.d > 500) continue;
+      const a = at(path, pr.s);
+      const dx = (lon - a.lon) * mLon(lat), dy = (lat - a.lat) * M_LAT;
+      const side = dx * a.n - dy * a.e >= 0 ? 1 : -1; // right of travel (forward direction) is +1
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(12, 2.6), new THREE.MeshBasicMaterial({ map: label(`📍 ${name}`, "#F7DD04", "#0b1220"), side: THREE.DoubleSide, transparent: true }));
+      scene.add(m);
+      marks.push({ s: pr.s, side, mesh: m, name, shown: false });
     }
 
     const state = { run: 0, lane: 1, x: 0, y: 0, vy: 0, speed: 18, tokens: 0, stations: 0, shield: 0, over: false, nextSpawn: 150, t0: performance.now(), bearing: 0 };
@@ -168,10 +207,10 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       for (let lane = 0; lane < 3; lane++) {
         if (lane === free) continue;
         const q = Math.random();
-        const kind: Kind | null = q < 0.25 ? "bus" : q < 0.55 ? "barrier" : q < 0.7 ? "cone" : null;
+        const kind: Kind | null = q < 0.2 ? "train" : q < 0.32 ? "bus" : q < 0.6 ? "barrier" : q < 0.72 ? "cone" : null;
         if (!kind) continue;
         const mesh = new THREE.Mesh(geo[kind], mats[kind]); mesh.scale.setScalar(SCALE); scene.add(mesh);
-        things.push({ s: r, lane, kind, alive: true, mesh, len: kind === "bus" ? 9 : 0.8, h: kind === "barrier" ? 1 : kind === "cone" ? 1.1 : 3 });
+        things.push({ s: r, lane, kind, alive: true, mesh, len: kind === "train" ? 22 : kind === "bus" ? 9 : 0.8, h: kind === "barrier" ? 1 : kind === "cone" ? 1.1 : kind === "train" ? 3.4 : 3 });
       }
       const extra: Kind = Math.random() < 0.06 && state.run > 400 ? "shield" : "token";
       for (let i = 0; i < (extra === "token" ? 6 : 1); i++) {
@@ -235,6 +274,24 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
           }
           if (ahead > 40) sg.counted = false;
         }
+        for (const mk of marks) {
+          const k = Math.floor((startS + state.run) / L);
+          const fw = k % 2 === 0;
+          const runS = k * L - startS + (fw ? mk.s : L - mk.s);
+          const ahead = runS - state.run;
+          mk.mesh.visible = ahead > -40 && ahead < 650;
+          if (!mk.mesh.visible) continue;
+          const w = runToLngLat(runS, (fw ? mk.side : -mk.side) * 24);
+          const p = local(w.lon, w.lat);
+          mk.mesh.position.set(p.x, 20, p.z);
+          mk.mesh.rotation.y = -Math.atan2(w.e, w.n);
+          mk.mesh.scale.setScalar(2.2);
+          if (!mk.shown && ahead < 120 && started) {
+            mk.shown = true;
+            setFlash(`📍 ${mk.name}`); setTimeout(() => setFlash(null), 1400);
+          }
+          if (ahead > 200) mk.shown = false;
+        }
         const m = new THREE.Matrix4().fromArray(args?.defaultProjectionData?.mainMatrix ?? args?.modelViewProjectionMatrix);
         const l = new THREE.Matrix4().makeTranslation(origin.x, origin.y, origin.z).scale(new THREE.Vector3(unit, -unit, unit)).multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2));
         camera.projectionMatrix = m.multiply(l);
@@ -249,7 +306,12 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       // a prettier real city: brick and brownstone low-rise, sandstone mid-rise, glass towers
       if (map.getLayer("building-3d")) {
         map.setLayerZoomRange("building-3d", 13, 24);
-        map.setPaintProperty("building-3d", "fill-extrusion-color", ["interpolate", ["linear"], ["coalesce", ["get", "render_height"], 8], 0, "#d9906f", 12, "#c97b5f", 22, "#e3c9a3", 45, "#d8d0c4", 80, "#a9c3df", 150, "#7fa6d6"]);
+        const h = ["coalesce", ["get", "render_height"], 8];
+        map.setPaintProperty("building-3d", "fill-extrusion-color", [
+          "case", [">", h, 70], ["interpolate", ["linear"], h, 70, "#9fd3ff", 200, "#5aa8ff"],
+          ["match", ["%", ["floor", ["+", ["*", h, 3.7], ["*", ["coalesce", ["get", "render_min_height"], 0], 1.3]]], 8],
+            0, "#ff9ebb", 1, "#ffd166", 2, "#7fe0d0", 3, "#9ccfff", 4, "#ffb38a", 5, "#c7b3ff", 6, "#b9f28c", 7, "#ffe08a", "#ffc4d6"],
+        ] as any);
         map.setPaintProperty("building-3d", "fill-extrusion-opacity", 1);
         map.setPaintProperty("building-3d", "fill-extrusion-vertical-gradient", true);
       }
@@ -329,7 +391,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
             if (t.kind === "token") state.tokens++;
             else { state.shield = 6; setFlash("☕ Coffee shield: 6 s"); setTimeout(() => setFlash(null), 1200); }
           } else if (t.kind !== "token" && t.kind !== "shield" && dz < t.len / 2 + 0.6) {
-            if (t.kind !== "bus" && state.y * 1 > t.h * 0.9) continue;
+            if (t.kind !== "bus" && t.kind !== "train" && state.y * 1 > t.h * 0.9) continue;
             if (state.shield > 0) { t.alive = false; scene.remove(t.mesh); state.shield = 0; setFlash("Shield used!"); setTimeout(() => setFlash(null), 900); }
             else end();
           }
