@@ -10,7 +10,8 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 maplibregl.setWorkerUrl(workerUrl);
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import { useStore } from "../store";
+import { useQuest, useStore } from "../store";
+import { GameLayer3D } from "./GameLayer3D";
 
 const STYLES = { night: "https://tiles.openfreemap.org/styles/dark", day: "https://tiles.openfreemap.org/styles/liberty" };
 const FONT = ["Noto Sans Regular"];
@@ -41,7 +42,8 @@ export function MapView() {
       return "night";
     }
   });
-  const trains = useRef(new Map<string, { from: [number, number]; to: [number, number]; t0: number; color: string; route: string; label: string }>());
+  const trains = useRef(new Map<string, { from: [number, number]; to: [number, number]; t0: number; color: string; route: string; label: string; bearing: number }>());
+  const game = useRef<GameLayer3D | null>(null);
   const sRef = useRef(s);
   sRef.current = s;
 
@@ -176,6 +178,10 @@ export function MapView() {
     map.addLayer({ id: "lc-me-acc", type: "circle", source: "lc-me", paint: { "circle-radius": 26, "circle-color": "#5ab0ff", "circle-opacity": 0.15 } });
     map.addLayer({ id: "lc-me", type: "circle", source: "lc-me", paint: { "circle-radius": 7.5, "circle-color": "#5ab0ff", "circle-stroke-color": "#fff", "circle-stroke-width": 3 } });
 
+    if (!map.getLayer("lc-game-3d")) {
+      game.current = new GameLayer3D();
+      map.addLayer(game.current);
+    }
     pinSink = (pins, selected) => {
       (map.getSource("lc-spots") as GeoJSONSource | undefined)?.setData(fc(pins.map((p) => pt(p.lon, p.lat, { id: p.id, name: p.name, partner: p.partner, kind: p.kind, selected: p.id === selected }))));
     };
@@ -207,6 +213,16 @@ export function MapView() {
       ),
     );
   }, [loaded, s.statics, s.mapState, s.me, s.stationId, s.justCollected, s.routeById, s.schoolById]);
+
+  // ---- Three.js game layer: tokens, beacons, quest ring, 3D trains -----------------------------
+  const quest = useQuest();
+  useEffect(() => {
+    const g = game.current;
+    if (!g || !s.statics) return;
+    const collected = new Set(s.mapState?.collected ?? []);
+    g.setStations(s.statics.stations.map((st) => ({ id: st.id, lat: st.lat, lon: st.lon, collected: collected.has(st.id) })), s.me?.user?.school?.color ?? "#c6ff3d");
+    g.setQuest(quest ? { lat: quest.station.lat, lon: quest.station.lon } : null);
+  }, [loaded, s.statics, s.mapState, s.me, quest]);
 
   // ---- lines: chaos width in Ride mode, dashed shuttle overlay ------------------------------
   useEffect(() => {
@@ -241,7 +257,7 @@ export function MapView() {
         for (const v of r.vehicles) {
           const prev = trains.current.get(v.id);
           const cur = prev ? lerp(prev, now) : ([v.lon, v.lat] as [number, number]);
-          next.set(v.id, { from: cur, to: [v.lon, v.lat], t0: now, color: sRef.current.routeById.get(v.routeId)?.color ?? "#fff", route: v.routeId, label: v.label });
+          next.set(v.id, { from: cur, to: [v.lon, v.lat], t0: now, color: sRef.current.routeById.get(v.routeId)?.color ?? "#fff", route: v.routeId, label: v.label, bearing: v.bearing ?? 0 });
         }
         trains.current = next;
       } catch {
@@ -259,7 +275,9 @@ export function MapView() {
       const src = mapRef.current?.getSource("lc-trains") as GeoJSONSource | undefined;
       if (!src) return;
       const now = performance.now();
-      src.setData(fc([...trains.current.entries()].map(([id, tr]) => { const [lon, lat] = lerp(tr, now); return pt(lon, lat, { id, color: tr.color }); })));
+      const list = [...trains.current.entries()].map(([id, tr]) => { const [lon, lat] = lerp(tr, now); return { id, lon, lat, color: tr.color, bearing: tr.bearing }; });
+      src.setData(fc(list.map((x) => pt(x.lon, x.lat, { id: x.id, color: x.color }))));
+      game.current?.setTrains(list);
     };
     raf = requestAnimationFrame(frame);
     return () => {

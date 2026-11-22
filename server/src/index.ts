@@ -16,6 +16,7 @@ import { communityRoutes } from "./routes/community.js";
 import { liveRoutes, UPLOAD_DIR } from "./routes/live.js";
 import { rideRoutes } from "./routes/ride.js";
 import { aiRoutes } from "./routes/ai.js";
+import { arcadeRoutes } from "./routes/arcade.js";
 
 async function main() {
   const db = await getDb();
@@ -42,7 +43,7 @@ async function main() {
 
   const api = express.Router();
   api.use(loadSession);
-  api.use(authRoutes, gameRoutes, communityRoutes, liveRoutes, rideRoutes, aiRoutes);
+  api.use(authRoutes, gameRoutes, communityRoutes, liveRoutes, rideRoutes, aiRoutes, arcadeRoutes);
   app.use("/api", api);
   app.use("/uploads", express.static(UPLOAD_DIR, { maxAge: "7d", fallthrough: false }));
 

@@ -195,6 +195,7 @@ gameRoutes.get("/me", requireUser, async (req, res) => {
     ),
     db.one(`SELECT points FROM weekly_user_points WHERE user_id=$1 AND week <= now() AND week > now() - interval '7 days'`, [u.id]),
   ]);
+  const weekStops = await db.one(`SELECT count(*)::int AS n FROM collections WHERE user_id=$1 AND first_ts >= $2`, [u.id, weekStart()]);
   const collected = new Set(collections.map((c: any) => c.station_id));
   const lines = ROUTES.map((r) => ({ id: r.id, short: r.short, color: r.color, have: r.stopIds.filter((s) => collected.has(s)).length, total: r.stopIds.length }));
   const earned = new Map(badges.map((b: any) => [b.badge_id, b]));
@@ -208,6 +209,7 @@ gameRoutes.get("/me", requireUser, async (req, res) => {
     },
     points: u.total_points,
     weekPoints: rank?.points ?? 0,
+    weekStops: weekStops?.n ?? 0,
     level: levelFor(u.total_points),
     streak: streakStatus(u),
     stops: { collected: collected.size, total: STATIONS.length },

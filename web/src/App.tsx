@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { fmtDist, haversine } from "./api";
 import { useI18n } from "./i18n";
-import { nearestStation, StoreProvider, useStore, type Mode } from "./store";
+import { nearestStation, StoreProvider, useQuest, useStore, type Mode } from "./store";
+import { LineRunner } from "./views/LineRunner";
 import { MapView } from "./components/MapView";
 import { StationSheet } from "./components/StationSheet";
 import { CheckinFlow } from "./components/CheckinFlow";
@@ -44,7 +45,9 @@ function Shell() {
       {s.panel === "live" && <LiveView />}
       {s.panel === "ride" && <RideView />}
       {s.checkinSpot && <CheckinFlow />}
+      {!s.panel && !s.stationId && !s.checkinSpot && s.me && <QuestCard />}
       <BottomNav />
+      {s.panel === "run" && <LineRunner onClose={() => s.setPanel(null)} />}
       {s.toastMsg && <div className="toast" role="status">{s.toastMsg}</div>}
       <span className="hidden">{t("map")}</span>
     </div>
@@ -105,6 +108,7 @@ function TopBar() {
             {m.icon} {m.label}
           </button>
         ))}
+        <button className="chip accent run-chip" onClick={() => (s.me ? s.setPanel("run") : s.setSignedOutBrowse(false))}>🎮 Line Runner</button>
       </div>
       {near && (
         <button className="nearest" onClick={() => { s.openStation(near.station.id); s.flyTo(near.station.lat, near.station.lon, 15.5); }}>
@@ -146,5 +150,37 @@ function BottomNav() {
       <button className={`navbtn ${s.panel === "board" ? "on" : ""}`} onClick={() => go("board")}><span className="ico">🏆</span>{t("board")}</button>
       <button className={`navbtn ${s.panel === "me" ? "on" : ""}`} onClick={() => (s.me ? go("me") : s.setSignedOutBrowse(false))}><span className="ico">👤</span>{t("me")}</button>
     </nav>
+  );
+}
+
+/** Game layer HUD: the next quest (best points per km) and this week's challenge. */
+function QuestCard() {
+  const s = useStore();
+  const q = useQuest();
+  const me = s.me;
+  const goal = 3;
+  const done = Math.min(goal, me?.weekStops ?? 0);
+  if (!q) return null;
+  const go = () => {
+    s.openStation(q.station.id);
+    s.flyTo(q.station.lat, q.station.lon, 15.5);
+  };
+  return (
+    <div className="quest">
+      <div className="quest-main" onClick={go} role="button">
+        <div className="quest-icon">🎯</div>
+        <div className="grow">
+          <div className="tiny muted" style={{ fontWeight: 700, letterSpacing: ".06em" }}>NEXT QUEST · {fmtDist(q.distanceM)}</div>
+          <b>Collect {q.station.name}</b>
+          <div className="tiny" style={{ color: "var(--accent)" }}>{q.reasons.slice(0, 3).join(" · ")}</div>
+        </div>
+        <div className="quest-pts">+{q.points}</div>
+      </div>
+      <div className="quest-week">
+        <span className="tiny">⚡ Weekly: collect {goal} new stops</span>
+        <div className="bar grow"><i style={{ width: `${(100 * done) / goal}%`, background: "var(--accent)" }} /></div>
+        <b className="tiny">{done}/{goal}</b>
+      </div>
+    </div>
   );
 }

@@ -15,7 +15,7 @@ export interface Statics {
 }
 export interface MapState { collected: string[]; stamps: string[]; weekOwners: Record<string, { school: string; checkins: number }>; lines: { routeId: string; chaos: number; shuttle: boolean; alertCount: number }[] }
 export type Mode = "explore" | "study" | "live" | "ride";
-export type Panel = null | "plan" | "board" | "me" | "live" | "ride";
+export type Panel = null | "plan" | "board" | "me" | "live" | "ride" | "run";
 export interface Pos { lat: number; lon: number; accuracy: number }
 
 interface Store {
@@ -160,3 +160,40 @@ export const spotEmoji = (s: any) =>
   : s.cuisines?.some((c: string) => /bakery|donut|dessert|ice_cream/.test(c)) ? "🧁" : s.cuisines?.some((c: string) => /coffee|bubble/.test(c)) ? "☕"
   : s.cuisines?.some((c: string) => /sandwich|bagel|deli/.test(c)) ? "🥪" : s.cuisines?.some((c: string) => /burger|chicken|american/.test(c)) ? "🍔"
   : s.amenity === "cafe" ? "☕" : "🍽️";
+
+export interface Quest { station: Station; points: number; reasons: string[]; distanceM: number }
+
+/**
+ * Next quest: the uncollected stop with the best points-per-distance, using the same
+ * rules as the server's scoring (new stop, new line, new neighborhood, Blue Line, away game).
+ */
+export function useQuest(): Quest | null {
+  const s = useStore();
+  return useMemo(() => {
+    if (!s.statics || !s.mapState || !s.me) return null;
+    const collected = new Set(s.mapState.collected);
+    const myLines = new Set<string>();
+    for (const id of collected) for (const r of s.stationById.get(id)?.routes ?? []) myLines.add(r);
+    const stamps = new Set(s.mapState.stamps);
+    const mySchool = s.me.user.school.id;
+    const home = s.config?.schools.find((c) => c.id === mySchool);
+    const from = s.pos ?? (home ? { lat: home.lat, lon: home.lon } : null);
+    if (!from) return null;
+    let best: Quest | null = null;
+    let bestScore = -1;
+    for (const st of s.statics.stations) {
+      if (collected.has(st.id)) continue;
+      const reasons = ["+100 new stop"];
+      let pts = 100;
+      for (const r of st.routes) if (!myLines.has(r)) { pts += 50; reasons.push(`+50 first ${s.routeById.get(r)?.short ?? r} stop`); }
+      if (st.neighborhoodId && !stamps.has(st.neighborhoodId)) { pts += 150; reasons.push(`+150 ${s.nbById.get(st.neighborhoodId)?.name ?? "new neighborhood"}`); }
+      if (st.routes.includes("Blue")) { pts += 50; reasons.push("+50 neutral ground"); }
+      const away = s.config?.schools.find((c) => c.id !== mySchool && (c.homeStations.includes(st.id) || haversine(st.lat, st.lon, c.lat, c.lon) < 900));
+      if (away) { pts *= 2; reasons.push(`x2 away game at ${away.short}`); }
+      const d = haversine(from.lat, from.lon, st.lat, st.lon);
+      const score = pts / (1 + d / 1500);
+      if (score > bestScore) { bestScore = score; best = { station: st, points: pts, reasons, distanceM: d }; }
+    }
+    return best;
+  }, [s.statics, s.mapState, s.me, s.pos, s.config, s.stationById, s.routeById, s.nbById]);
+}

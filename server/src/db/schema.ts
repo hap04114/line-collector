@@ -304,6 +304,20 @@ CREATE TABLE IF NOT EXISTS study_ratings (
 
 CREATE TABLE IF NOT EXISTS translations (lang text NOT NULL, key text NOT NULL, text text NOT NULL, PRIMARY KEY (lang, key));
 
+CREATE TABLE IF NOT EXISTS arcade_scores (
+  id text PRIMARY KEY,
+  user_id text NOT NULL,
+  school_id text NOT NULL,
+  route_id text NOT NULL,
+  score int NOT NULL,
+  distance_m int NOT NULL,
+  tokens int NOT NULL,
+  stations int NOT NULL,
+  duration_ms int NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS arcade_route_idx ON arcade_scores (route_id, score DESC);
+
 -- ---- time series (hypertables on Tiger Data) -------------------------------
 CREATE TABLE IF NOT EXISTS train_positions (
   ts timestamptz NOT NULL,

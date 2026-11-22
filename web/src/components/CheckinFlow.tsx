@@ -3,6 +3,7 @@ import { api, ApiError, fmtDist, haversine } from "../api";
 import { useI18n } from "../i18n";
 import { spotEmoji, useStore } from "../store";
 import { Sheet } from "./Sheet";
+import { Confetti } from "./Confetti";
 
 /** Downscale on the phone before upload: venue wifi is slow and the server resizes anyway. */
 async function shrink(file: File, max = 1600): Promise<Blob> {
@@ -46,6 +47,7 @@ export function CheckinFlow() {
   const [result, setResult] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const levelBefore = useRef<string | null>(s.me?.level?.name ?? null);
 
   const dist = s.pos ? haversine(s.pos.lat, s.pos.lon, spot.lat, spot.lon) : null;
   const radius = spot.checkinRadiusM ?? 150;
@@ -101,6 +103,8 @@ export function CheckinFlow() {
   if (phase === "done" && result) {
     return (
       <Sheet title={result.newStop ? `🎉 ${t("newStop")}` : t("nice")} onClose={close} full>
+        {result.points > 0 && <Confetti colors={[s.me?.user?.school?.color ?? "#c6ff3d", "#c6ff3d", "#ffd166", "#5ab0ff", "#ffffff"]} />}
+        {result.level && levelBefore.current && result.level !== levelBefore.current && <div className="levelup">⬆ LEVEL UP: {result.level}!</div>}
         <div className="points-burst">+<CountUp to={result.points} /></div>
         <div className="center muted">{t("pointsEarned")} at {spot.name}</div>
         <div>
