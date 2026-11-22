@@ -1,10 +1,10 @@
-# Line Collector: BostonHacks 2026 final draft
+# Charlie on the MTA: BostonHacks 2026 final draft
 
 Nov 22, 2026 · Team: Himani Patil, Aakanksha Chavan, Jay (Jianning) Qi, [4th member] · Repo: github.com/hap04114/line-collector (data pipeline from our T-Field repo)
 
 ## The one line
 
-**Line Collector is how a new student becomes a Bostonian: food that tastes like home, a place to study, the T lines that get you there, and a school-vs-school game that makes you go.**
+**Charlie on the MTA is how a new student becomes a Bostonian: food that tastes like home, a place to study, the T lines that get you there, and a school-vs-school game that makes you go.**
 
 ## Why it's different (lead with this, not the game)
 
@@ -23,7 +23,11 @@ Several teams built "collect Boston by eating or riding, plus a leaderboard." Th
 - **Tight money:** 44% of Massachusetts public college students face food insecurity.
 - **Renting is a trap:** tenant-paid broker fees banned Aug 1, 2025, yet listings still charge them (Globe); the FBI reported 490+ Boston-area rental fraud victims and $2.6M lost this year.
 
-Pitch line: *"About half of college students report high loneliness, and first-years are hit hardest. Priya landed from India in August: no car, $10 for dinner, and she's never left campus. Line Collector is her first week in Boston."*
+Opening line (Charlie on the MTA): *"In 1949, Boston sang about Charlie, a man stuck riding the T forever because he couldn't pay the nickel to get off. That's why your fare card is called a CharlieCard. Today's students have the opposite problem: they never get on."*
+
+Pitch line: *"About half of college students report high loneliness, and first-years are among the most likely to feel it. Priya landed from India in August: no car, $10 for dinner, and she's never left campus. This is her first week in Boston."*
+
+If a judge asks about Charlie: "M.T.A." was written in 1949 by Jacqueline Steiner and Bess Lomax Hawes for Walter O'Brien's mayoral campaign, protesting a fare increase collected when riders got off. The Kingston Trio made it a hit in 1959, and the MBTA named the CharlieCard after it in 2006.
 
 ## What it does (as built)
 
@@ -56,12 +60,12 @@ Pitch line: *"About half of college students report high loneliness, and first-y
 
 ## Three-minute demo
 
-1. **Hook (20 s):** the research line, then Priya.
-2. **First Week (60 s):** sign in as Priya → welcome → Day 1, a taste of home → check in with a photo → points, confetti, the board moves.
+1. **Hook (30 s):** the Charlie opening line, the research line, then Priya.
+2. **First Week (50 s):** sign in as Priya → welcome → Day 1, a taste of home → check in with a photo → points, confetti, the board moves.
 3. **Safety (30 s):** paste the example listing → broker fee, owner abroad, wire transfer flagged → where to report.
 4. **Local partner (20 s):** the owner page: confirm a code, the QR poster, an on-chain receipt.
 5. **Engine and tech (30 s):** the fair board and race replay; the Planner's workflow steps; the How it's built page (Tiger rows, aggregates, Vultr, Gemini).
-6. **Close (10–20 s):** Street Runner on Kenmore Street. *"Line Collector is how a new student becomes a Bostonian."*
+6. **Close (10–20 s):** Street Runner on Kenmore Street. *"Charlie never got off the T. Priya gets off somewhere new every week. This is how a new student becomes a Bostonian."*
 
 Backup: a pre-recorded 1-minute video and seeded demo players (labelled "(demo)").
 
@@ -81,7 +85,7 @@ Backup: a pre-recorded 1-minute video and seeded demo players (labelled "(demo)"
 
 ## Devpost draft
 
-**Line Collector** gets Boston students out of the campus bubble. A new student's first week becomes five quests to real places: food that tastes like home, a free landmark, a study spot, a T line they've never ridden, and how to rent without getting scammed. Check in with a photo to collect stops for your school's weekly board, ranked fairly per active player. Local spots run punch cards for their slow hours, with receipts on Solana. The map is the real city: Google's photorealistic 3D Boston with live trains on top. And Street Runner lets you run your T line through it.
+**Charlie on the MTA** gets Boston students out of the campus bubble. A new student's first week becomes five quests to real places: food that tastes like home, a free landmark, a study spot, a T line they've never ridden, and how to rent without getting scammed. Check in with a photo to collect stops for your school's weekly board, ranked fairly per active player. Local spots run punch cards for their slow hours, with receipts on Solana. The map is the real city: Google's photorealistic 3D Boston with live trains on top. And Street Runner lets you run your T line through it.
 
 *How we built it:* TypeScript, Express, React, MapLibre GL with OpenFreeMap tiles; Google Photorealistic 3D Tiles (Map Tiles API) rendered with three.js and 3d-tiles-renderer, in sync with the MapLibre camera; MBTA V3 API (live trains, predictions, alerts) on a poller, plus Commuter Rail; OpenStreetMap places with dietary and allergen tags from our T-Field pipeline; Google Routes and Places APIs; Gemini (vision, structured output, embeddings); a Mastra workflow; Tiger Data (hypertables, continuous aggregates, pgvector); Solana devnet receipts; a Mixamo character with motion capture retargeted in code; Vultr compute and Object Storage with Caddy HTTPS; [domain].
 

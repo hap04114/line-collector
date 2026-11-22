@@ -131,7 +131,7 @@ function Dashboard({ me, reload }: { me: any; reload: () => void }) {
           <div className="small muted">Print this for your counter. Students scan it to find you and collect your stop.</div>
           <div className="center" style={{ background: "#fff", color: "#0d0e12", borderRadius: 16, padding: 16 }}>
             <div style={{ fontWeight: 900, fontSize: 22 }}>📍 {me.partner.name}</div>
-            <div style={{ fontWeight: 700 }}>is a Line Collector local partner</div>
+            <div style={{ fontWeight: 700 }}>is a Charlie on the MTA local partner</div>
             <img alt="QR code" src={`/api/qr.svg?text=${encodeURIComponent(`${location.origin}/?spot=${me.partner.spotId}`)}`} style={{ width: 200, height: 200, margin: "10px auto", display: "block" }} />
             <div style={{ fontSize: 14 }}>Scan · check in · collect the {me.partner.station} stop · earn a stamp</div>
           </div>

@@ -213,7 +213,7 @@ export function Landing() {
   return (
     <div className="lx" ref={root} onScroll={(e) => setScrolled((e.target as HTMLElement).scrollTop > 10)}>
       <nav className={`lx-nav ${scrolled ? "solid" : ""}`}>
-        <div className="lx-logo"><span className="lx-mark"><i /><i /><i /><i /></span>Line Collector</div>
+        <div className="lx-logo"><span className="lx-mark"><i /><i /><i /><i /></span>Charlie on the MTA</div>
         <div className="lx-links">
           <button onClick={() => go("how")}>How it works</button>
           <button onClick={() => go("features")}>Features</button>
@@ -303,7 +303,7 @@ export function Landing() {
           <Doodle name="bridge" size={84} className="dd-inline float" />
           <div className="lx-eyebrow rv">Live data</div>
           <h2 className="rv">The T, right now</h2>
-          <p className="lx-p rv">Line Collector reads the MBTA every 30 seconds and keeps the history, so it knows which lines run late and when. Shutdowns turn into bonus points instead of bad days.</p>
+          <p className="lx-p rv">Charlie on the MTA reads the MBTA every 30 seconds and keeps the history, so it knows which lines run late and when. Shutdowns turn into bonus points instead of bad days.</p>
           <ul className="lx-list rv">
             <li>Live trains and alerts on the map</li>
             <li>A Chaos Score for every line</li>
@@ -383,7 +383,7 @@ export function Landing() {
       </section>
 
       <footer className="lx-foot">
-        <div className="lx-logo"><span className="lx-mark"><i /><i /><i /><i /></span>Line Collector</div>
+        <div className="lx-logo"><span className="lx-mark"><i /><i /><i /><i /></span>Charlie on the MTA</div>
         <span>Built at BostonHacks 2026 · Map data © OpenStreetMap contributors · Transit data from the MBTA · Not affiliated with the MBTA or any school</span>
       </footer>
     </div>

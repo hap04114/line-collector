@@ -172,7 +172,7 @@ export function HousingFinder({ onCheckListing, onSublets }: { onCheckListing: (
           <div className="tiny muted">{data.source}. Nightly prices are on Google and the booking sites.</div>
         </div>
       )}
-      {kind === "room" && s.me && <button className="btn" onClick={onSublets}>🎓 Verified student sublets in Line Collector</button>}
+      {kind === "room" && s.me && <button className="btn" onClick={onSublets}>🎓 Verified student sublets in Charlie on the MTA</button>}
       {kind === "dorm" && <div className="tiny muted">Dorms are assigned through your school; the housing office also lists approved off-campus and summer options.</div>}
 
       {/* pre-filled searches on each site */}

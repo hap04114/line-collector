@@ -41,7 +41,7 @@ export const config = {
   },
   email: {
     resendKey: process.env.RESEND_API_KEY || "",
-    from: process.env.EMAIL_FROM || "Line Collector <onboarding@resend.dev>",
+    from: process.env.EMAIL_FROM || "Charlie on the MTA <onboarding@resend.dev>",
   },
   rentcastKey: process.env.RENTCAST_API_KEY || "",
   // Google Map Tiles API (Photorealistic 3D Tiles) for Street Runner; a browser key, restrict it by website

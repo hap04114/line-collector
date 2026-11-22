@@ -1,9 +1,9 @@
-# Line Collector
+# Charlie on the MTA
 
 **Cheap food and study spots you can reach by T right now, plus a game your whole school plays.**
 BostonHacks 2026 · Track: Bos(tons) of Eats and Streets (Transit Gamification as the second angle).
 
-Line Collector puts every MBTA subway stop on a live 3D map of Boston. Tap a stop to see three spots under your budget, filtered by craving, vibe, and whether they're open now or past midnight. Ride there, eat, and snap a photo. Once the photo checks out, the stop is yours. Stops fill in with your school's color, and the seven schools race on a weekly board that resets every Monday.
+Charlie on the MTA puts every MBTA subway stop on a live 3D map of Boston. Tap a stop to see three spots under your budget, filtered by craving, vibe, and whether they're open now or past midnight. Ride there, eat, and snap a photo. Once the photo checks out, the stop is yours. Stops fill in with your school's color, and the seven schools race on a weekly board that resets every Monday.
 
 ## Quick start
 

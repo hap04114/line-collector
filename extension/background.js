@@ -18,7 +18,7 @@ async function refresh() {
         type: "basic",
         iconUrl: "icons/128.png",
         title: `${l.name}: shuttle or shutdown`,
-        message: `${l.alerts[0]?.header ?? "Service disruption"} · Stops on this line are worth x1.5 in Line Collector.`,
+        message: `${l.alerts[0]?.header ?? "Service disruption"} · Stops on this line are worth x1.5 in Charlie on the MTA.`,
       });
     }
     await chrome.storage.local.set({ known: shut });

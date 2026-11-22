@@ -84,7 +84,7 @@ function ListingCheck() {
               <a href="https://www.mass.gov/how-to/file-a-consumer-complaint" target="_blank" rel="noreferrer">Massachusetts Attorney General ↗</a>. Contact your bank right away if you sent money.
             </div>
           )}
-          <div className="tiny muted">{res.disclaimer} Checked by {res.checkedBy}. Line Collector never passes messages between students and brokers.</div>
+          <div className="tiny muted">{res.disclaimer} Checked by {res.checkedBy}. Charlie on the MTA never passes messages between students and brokers.</div>
         </div>
       )}
     </>

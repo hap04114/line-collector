@@ -114,7 +114,7 @@ export function FreeBostonView() {
       ...trail.stops.map((x: any, i: number) => `${i + 1}. ${x.name}${x.station ? ` (T: ${x.station})` : ""}`),
       trail.meal ? `🍴 ${trail.meal.name}` : "",
       ...nearTrail.map((x: any) => `🎉 ${x.e.title}, ${clock(x.e.start)}${x.e.url ? ` ${x.e.url}` : ""}`),
-      "Made with Line Collector",
+      "Made with Charlie on the MTA",
     ].filter(Boolean).join("\n");
     try {
       if (navigator.share) await navigator.share({ title: "My $0 Boston day", text });

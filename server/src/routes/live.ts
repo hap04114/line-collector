@@ -85,7 +85,7 @@ liveRoutes.post("/sublets", requireUser, upload.array("photos", 5), async (req, 
   if (lat == null || lon == null) throw new HttpError(422, "We couldn't find that address. Check it, or drop a pin on the map.");
   if (!geo) flags.push({ type: "address", severity: "low", quote: b.address, explanation: "Address not matched by the geocoder; location comes from the map pin." });
   const near = nearestStations(lat, lon, 1)[0];
-  if (near.distanceM > 5000) throw new HttpError(422, "That address is too far from the T for Line Collector.");
+  if (near.distanceM > 5000) throw new HttpError(422, "That address is too far from the T for Charlie on the MTA.");
   const zip = geo?.zip || b.zip || rentCache().stationZip[near.station.id] || null;
 
   // 2. price vs the neighborhood's typical rent ("too good to be true" under 60%)
