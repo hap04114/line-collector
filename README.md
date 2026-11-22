@@ -75,7 +75,8 @@ Street Runner's real look uses two character files from the three.js examples (`
 
 ## Be honest on stage
 
-- **Prices are estimates.** OSM has no prices, so each spot's price comes from its type and cuisine and is labelled "est." Put hand-checked prices in `data/price-overrides.json` as `{ "<spot id>": { "priceCents": 750, "cheapestItem": "Cheese slice" } }`, then restart. Those show as checked.
+- **Google data is a demo-day lookup, not a database.** `npm run enrich:google` fetched ratings, price ranges, hours and open/closed status from Google Places for the 400 food spots closest to T stations. Google's terms don't allow storing or republishing that content, so `data/google-places.json` stays on the demo machine and is gitignored. In production the app would look these up live when a spot is opened. Travel times and directions (Routes API) are fetched live and never stored.
+- **Prices are estimates where Google has none.** OSM has no prices, so each spot's price comes from its type and cuisine and is labelled "est." Put hand-checked prices in `data/price-overrides.json` as `{ "<spot id>": { "priceCents": 750, "cheapestItem": "Cheese slice" } }`, then restart. Those show as checked.
 - **Partner offers are samples.** Four independent spots near the GSU and Northeastern carry offers labelled "Sample offer", and their owner page says the business has not agreed to a partnership. Swap in real pilots in the `partners` table if any spot agrees.
 - **Demo players are seeded.** Each school has 12 players flagged `is_demo` (names end in "(demo)"), so the board isn't empty. Their check-ins went through the real scoring code. Reset them with `npm run seed -- --reset-demo`.
 - **Demo location.** With `DEMO_MODE=true`, the check-in screen offers "simulate being here (judging only)" so you can show a Northeastern check-in from the BU GSU. Turn `DEMO_MODE` off after judging.

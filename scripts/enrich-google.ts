@@ -2,7 +2,7 @@
  * Fills in ratings, real price ranges, verified hours and closed status from Google Places API (New)
  * for the food spots closest to T stations. Writes data/google-places.json; the server applies it at boot.
  * Resumable: spots already looked up are skipped.
- *   GOOGLE_API_KEY=... npm run enrich:google -- [how many, default 400]
+ *   GOOGLE_API_KEY=... npm run enrich:google -- [how many, default 400] [--stations=place-nuniv,place-rugg]
  */
 import "dotenv/config";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -18,7 +18,9 @@ const OUT = resolve(DATA_DIR, "google-places.json");
 const spots: any[] = JSON.parse(readFileSync(resolve(DATA_DIR, "spots.json"), "utf8")).spots.filter((s: any) => s.kind === "food");
 const tf = existsSync(resolve(DATA_DIR, "tfield.json")) ? JSON.parse(readFileSync(resolve(DATA_DIR, "tfield.json"), "utf8")).newSpots : [];
 const done = existsSync(OUT) ? JSON.parse(readFileSync(OUT, "utf8")) : { places: {} as Record<string, any> };
-const todo = [...spots, ...tf].filter((s) => !done.places[s.id]).sort((a, b) => a.distanceM - b.distanceM).slice(0, LIMIT);
+// optional: only spots at these stations, e.g. campus home stations first: -- 300 --stations=place-nuniv,place-rugg
+const only = process.argv.find((a) => a.startsWith("--stations="))?.slice("--stations=".length).split(",");
+const todo = [...spots, ...tf].filter((s) => !done.places[s.id] && (!only || only.includes(s.stationId))).sort((a, b) => a.distanceM - b.distanceM).slice(0, LIMIT);
 console.log(`Looking up ${todo.length} spots (${Object.keys(done.places).length} already done)`);
 
 let n = 0, matched = 0, failed = 0;

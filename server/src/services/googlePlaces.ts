@@ -23,7 +23,9 @@ export function sameName(a: string, b: string) {
   const x = norm(a), y = norm(b);
   if (!x || !y) return false;
   if (x.includes(y) || y.includes(x)) return true;
-  const ta = new Set(x.split(" ")), tb = new Set(y.split(" "));
+  // a trailing plural "s" doesn't make a different place ("Mamacitas" is "Mamacita Mexican Comida")
+  const stem = (t: string) => (t.length > 3 && t.endsWith("s") && !t.endsWith("ss") ? t.slice(0, -1) : t);
+  const ta = new Set(x.split(" ").map(stem)), tb = new Set(y.split(" ").map(stem));
   const shared = [...ta].filter((t) => tb.has(t)).length;
   return shared / Math.min(ta.size, tb.size) >= 0.6;
 }
