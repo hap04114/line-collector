@@ -1,0 +1,27 @@
+/* ---- Street Runner HUD, countdown, speed lines ---- */
+.sr-hud { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.sr-score { font: 900 34px/1 Inter, system-ui, sans-serif; color: #fff; letter-spacing: -0.02em; text-shadow: 0 3px 0 #0b1220, 0 6px 18px rgba(0,0,0,.35); -webkit-text-stroke: 1px #0b1220; }
+.sr-row { display: flex; gap: 8px; }
+.sr-coins, .sr-dist, .sr-shield { font: 800 14px/1 Inter, system-ui, sans-serif; padding: 7px 11px; border-radius: 999px; border: 2px solid #0b1220; box-shadow: 0 3px 0 #0b1220; }
+.sr-coins { background: #F7DD04; color: #0b1220; animation: coinpop .35s cubic-bezier(.2,1.8,.4,1); }
+.sr-dist { background: #fff; color: #0b1220; }
+.sr-shield { background: #7ad7ff; color: #0b1220; }
+@keyframes coinpop { from { transform: scale(1.35); } to { transform: none; } }
+.sr-speed { position: relative; width: 170px; height: 20px; border-radius: 999px; background: rgba(11,18,32,.75); border: 2px solid #0b1220; overflow: hidden; }
+.sr-speed i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #3ddc97, #F7DD04 60%, #ff5a5f); transition: width .15s linear; }
+.sr-speed b { position: relative; display: block; text-align: center; font: 800 11px/16px Inter, system-ui, sans-serif; color: #fff; text-shadow: 0 1px 2px #000; }
+.sr-count { position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%); z-index: 4; font: 900 120px/1 Inter, system-ui, sans-serif; color: #F7DD04; -webkit-text-stroke: 4px #0b1220; text-shadow: 0 8px 0 #0b1220; animation: countpop .9s cubic-bezier(.2,1.6,.4,1) both; pointer-events: none; }
+.sr-count.go { color: #3ddc97; font-size: 96px; }
+@keyframes countpop { 0% { transform: translate(-50%, -50%) scale(.3); opacity: 0; } 30% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1); opacity: .9; } }
+.speedlines { position: absolute; inset: 0; z-index: 1; pointer-events: none; transition: opacity .3s;
+  background:
+    repeating-conic-gradient(from 0deg at 50% 46%, rgba(255,255,255,.0) 0deg 4deg, rgba(255,255,255,.55) 4deg 4.6deg, rgba(255,255,255,0) 4.6deg 11deg);
+  -webkit-mask: radial-gradient(circle at 50% 46%, transparent 0 32%, #000 62%);
+  mask: radial-gradient(circle at 50% 46%, transparent 0 32%, #000 62%);
+  animation: rush .25s linear infinite; }
+@keyframes rush { from { transform: scale(1); } to { transform: scale(1.06); } }
+.runner-next { background: rgba(11,18,32,.82) !important; border: 2px solid #0b1220; color: #fff; font-weight: 600; box-shadow: 0 3px 0 rgba(0,0,0,.35); }
+.runner-pad button { background: rgba(255,255,255,.92) !important; color: #0b1220 !important; border: 2px solid #0b1220 !important; box-shadow: 0 4px 0 #0b1220; font-size: 26px; }
+.runner-pad button:active { transform: translateY(3px); box-shadow: 0 1px 0 #0b1220; }
+.runner-flash { color: #F7DD04 !important; -webkit-text-stroke: 1.5px #0b1220; text-shadow: 0 4px 0 #0b1220 !important; font-size: 30px !important; }
+@media (prefers-reduced-motion: reduce) { .speedlines, .sr-count, .sr-coins { animation: none !important; } }
