@@ -484,7 +484,7 @@ export function MapView() {
       {theme === "photo" && tilesKey && gCredit && (
         <div className="g-credit">{gCredit.logo && <img src={gCredit.logo} alt="Google" />}<span>{gCredit.text}</span></div>
       )}
-      <div style={{ position: "absolute", right: 10, bottom: "calc(var(--safe-bottom) + 236px)", zIndex: 4, display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
+      <div className="map-tools" style={{ position: "absolute", right: 10, bottom: "calc(var(--safe-bottom) + 236px)", zIndex: 4, display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
         {panel && (
           <div className="layer-panel">
             <div className="live-pill"><span className="live-dot" />LIVE · {liveInfo.trains || "…"} trains{ago != null ? ` · ${ago < 90 ? `${ago}s` : `${Math.round(ago / 60)}m`} ago` : ""}{liveInfo.tempF != null ? ` · ${Math.round(liveInfo.tempF)}°F` : ""}</div>

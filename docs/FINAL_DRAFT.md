@@ -27,18 +27,20 @@ Pitch line: *"About half of college students report high loneliness, and first-y
 
 ## What it does (as built)
 
-- **Live map:** every T station, live trains, alerts, campuses; your stops fill in with your school's color; optional 3D game tokens.
+- **Live map:** every T station, live trains, alerts, campuses and all 13 Commuter Rail lines; your stops fill in with your school's color. Four looks: **Photoreal** (Google's photorealistic 3D Boston, with our lines and pins on top), Realistic, Illustrated and Night.
 - **First Week in Boston:** welcome (home region, language, budget), then five quests that each point at a real nearby place: a taste of home, a free landmark, a study spot, a line you've never ridden, and know your rights before you rent. Finishing all five earns *Bostonian in a Week*.
-- **Find:** food or study spots near you, by budget, craving, diet and open now. With Gemini embeddings it searches by meaning ("cozy dumplings, cheap").
+- **Find:** food or study spots near you, by budget, craving, diet, allergens and open on arrival. With Gemini embeddings it searches by meaning ("cozy dumplings, cheap"). Spots near T stations show real Google ratings, price ranges and hours.
+- **Getting there:** real travel times by walking, T, T + bus, Blue Bikes (live docks) and rideshare from the Google Routes API, with a "When are you going?" time picker.
+- **$0 Boston:** free places, day trails and live Boston events for a no-money day.
 - **Check-in:** GPS within 150 m, a fresh photo (fingerprint), Gemini confirms it, then points with reasons, streaks with a monthly skip, 18 badges, levels, confetti.
 - **Menu reader:** snap a menu and Gemini reads items and prices, so the spot gets a real price instead of an estimate.
 - **Best time to go:** a heatmap of each spot's check-ins by day and hour.
 - **Stop Planner (Mastra workflow):** "$10, two hours, spicy food, then somewhere quiet to study" runs understand → remember → propose → check → study → write, and every step is visible.
 - **School board:** average per active player or total stops, a weekly race timeline with replay, your school, and friends.
 - **Local partners:** punch cards, slow-hour bonuses, codes, an owner page with visits by hour, a QR counter poster, Solana receipts.
-- **Live:** listing check, verified sublets (address, price vs. rent, scam text, reused photos, landlord consent), rent snapshot.
+- **Live:** listing check, verified sublets (address, price vs. rent, scam text, reused photos, landlord consent), and Find a place: nearby hostels and hotels with Google ratings, plus pre-filled rental searches.
 - **Ride:** line Chaos Score from live delays and alerts, the last-train nudge, the same-school Late-Night Ride Split with safety rules.
-- **Street Runner:** run your line's real route through the real streets; arcade scores have their own board and never touch school points.
+- **Street Runner:** run your line's real route through Google's photorealistic 3D Boston, on any subway or Commuter Rail line, as a motion-captured runner. Jump onto T cars and run along their roofs, roll under LOW BRIDGE signs, grab a blue bike. Arcade scores have their own board and never touch school points.
 - **Chrome extension:** worst-line Chaos badge and shutdown alerts.
 
 ## Sponsors: one real job each (with live proof on the 🔧 How it's built page)
@@ -79,11 +81,13 @@ Backup: a pre-recorded 1-minute video and seeded demo players (labelled "(demo)"
 
 ## Devpost draft
 
-**Line Collector** gets Boston students out of the campus bubble. A new student's first week becomes five quests to real places: food that tastes like home, a free landmark, a study spot, a T line they've never ridden, and how to rent without getting scammed. Check in with a photo to collect stops for your school's weekly board, ranked fairly per active player. Local spots run punch cards for their slow hours. And Street Runner lets you run your line through the real streets of Boston.
+**Line Collector** gets Boston students out of the campus bubble. A new student's first week becomes five quests to real places: food that tastes like home, a free landmark, a study spot, a T line they've never ridden, and how to rent without getting scammed. Check in with a photo to collect stops for your school's weekly board, ranked fairly per active player. Local spots run punch cards for their slow hours, with receipts on Solana. The map is the real city: Google's photorealistic 3D Boston with live trains on top. And Street Runner lets you run your T line through it.
 
-*How we built it:* TypeScript, Express, React, MapLibre GL with OpenFreeMap tiles; MBTA V3 API (live trains, predictions, alerts) on a poller; OpenStreetMap places with dietary tags from our T-Field pipeline; Gemini (vision, structured output, embeddings); a Mastra workflow; Tiger Data (hypertables, continuous aggregates, pgvector); Vultr compute and Object Storage with Caddy HTTPS; Solana devnet receipts; [domain].
+*How we built it:* TypeScript, Express, React, MapLibre GL with OpenFreeMap tiles; Google Photorealistic 3D Tiles (Map Tiles API) rendered with three.js and 3d-tiles-renderer, in sync with the MapLibre camera; MBTA V3 API (live trains, predictions, alerts) on a poller, plus Commuter Rail; OpenStreetMap places with dietary and allergen tags from our T-Field pipeline; Google Routes and Places APIs; Gemini (vision, structured output, embeddings); a Mastra workflow; Tiger Data (hypertables, continuous aggregates, pgvector); Solana devnet receipts; a Mixamo character with motion capture retargeted in code; Vultr compute and Object Storage with Caddy HTTPS; [domain].
 
-*Challenges:* [fill in]. *Accomplishments:* [fill in]. *What we learned:* [fill in].
+*Challenges:* drawing Google's 3D city inside an interactive map, perfectly in sync with its camera, so our lines and pins sit on the right buildings. Much of the T runs underground, but a 3D city is captured from above, so Street Runner starts each line on its best open-air stretch and never jumps onto roofs. Two 3D cities on one page shared a single tile cache and starved each other until we gave each its own. Keeping photo check-ins strict without making the demo impossible.
+*Accomplishments:* everything on screen is real and live: trains, alerts, Google's 3D Boston, ratings and travel times, Tiger aggregates and Solana receipts. Two people shipped more than 15 merged pull requests overnight without a single merge conflict.
+*What we learned:* how 3D tile streaming works (screen-space error, caches, queues), retargeting motion capture between skeletons, and that honest labels ("est.", "sample", "demo") make a demo more convincing, not less.
 *What's next:* sign pilot partners, student-submitted menus at scale, a September 1 move-in event, then new residents and visitors.
 
 ## Be honest on stage
@@ -98,9 +102,12 @@ Backup: a pre-recorded 1-minute video and seeded demo players (labelled "(demo)"
 
 | Item | Status | Owner |
 |---|---|---|
-| Gemini key → real photo check, menu reader, scam scan, embeddings | needs key | |
-| Tiger Cloud → hypertables, aggregates, pgvector verified on the proof page | needs connection string | |
-| Vultr server + Object Storage + domain + HTTPS | needs accounts | |
+| Gemini key → real photo check, menu reader, scam scan, embeddings | done, live | Himani |
+| Tiger Cloud → hypertables, aggregates, pgvector verified on the proof page | done, live | Himani |
+| Google keys → Photoreal map and Street Runner (tiles), directions and place data (Routes + Places) | done, live; add the venue/domain URL to the tiles key's websites | Himani |
+| MBTA key, Solana wallet (funded, test receipt on devnet) | done, live | Himani |
+| Vultr server + Object Storage + domain + HTTPS | needs accounts; steps in README → Deploy on Vultr | Aakanksha |
+| RentCast | key has no active plan; off, the app shows fallbacks | |
 | Pilot partner near the GSU (7 AM) | to do | |
 | Track question to an organizer (Boundless Boston?) | to do | |
 | 1-minute backup video | to do | |

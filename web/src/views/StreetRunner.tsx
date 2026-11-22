@@ -25,6 +25,22 @@ const mLon = (lat: number) => 111320 * Math.cos((lat * Math.PI) / 180);
 interface Path { pts: [number, number][]; cum: number[]; len: number }
 type Kind = "barrier" | "cone" | "bus" | "train" | "token" | "shield" | "gate";
 
+/**
+ * Where each subway run starts: the line's best open-air stretch, so the photoreal city is visible (much of the
+ * T runs underground or under covered stations, where a 3D city captured from above shows only rooftops).
+ * [station, meters past it]; runs head along MBTA direction-0 order.
+ */
+const SCENIC_START: Record<string, [string, number]> = {
+  Red: ["place-jfk", 250], // out of the tunnel, south along the Neponset toward Quincy
+  Mattapan: ["place-cedgr", 0], // the trolley through Cedar Grove cemetery
+  Orange: ["place-mlmnl", 120], // Malden to Sullivan on the embankment
+  Blue: ["place-rbmnl", 80], // along Revere Beach
+  "Green-B": ["place-bland", 0], // Commonwealth Ave median past BU
+  "Green-C": ["place-smary", 0], // Beacon Street
+  "Green-D": ["place-fenwy", 60], // the old railroad right-of-way through Brookline
+  "Green-E": ["place-nuniv", -80], // Huntington Ave from Northeastern
+};
+
 /** Real Boston landmarks; a big sign appears beside the run when the route passes near one. */
 const LANDMARKS: [string, number, number][] = [
   ["Prudential Center", 42.3471, -71.0825], ["Fenway Park", 42.3467, -71.0972], ["Citgo Sign", 42.3489, -71.0951],
@@ -229,8 +245,13 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
     if (first.s > path.len / 2) { coords = [...coords].reverse(); path = buildPath(coords); }
     const stops = stations.map((st) => ({ name: st.name, ...project(path, st.lon, st.lat) })).filter((x) => x.d < 400).sort((a, b) => a.s - b.s);
     const home = stops.find((x) => stations.find((st) => st.name === x.name && homeStations.includes(st.id)));
-    // Commuter Rail starts at a downtown terminal; begin ~300 m out so you are not inside the train shed
-    const startS = Math.max(0, (home?.s ?? (line.startsWith("CR-") ? 380 : 0)) - 80);
+    // subway: the line's scenic open-air stretch; Commuter Rail: ~300 m out of the downtown terminal (not in the shed)
+    const scenic = SCENIC_START[line];
+    const scenicSt = scenic ? s.stationById.get(scenic[0]) : undefined;
+    const scenicP = scenicSt ? project(path, scenicSt.lon, scenicSt.lat) : null;
+    const startS = scenicP && scenicP.d < 400
+      ? Math.min(Math.max(0, scenicP.s + scenic![1]), Math.max(0, path.len - 100))
+      : Math.max(0, (home?.s ?? (line.startsWith("CR-") ? 380 : 0)) - 80);
     const L = path.len;
     const linePos = (r: number) => { const u = startS + r, k = Math.floor(u / L), w = u - k * L; return k % 2 === 0 ? { p: w, dir: 1 } : { p: L - w, dir: -1 }; };
 
@@ -694,6 +715,15 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
     let photoCanvas: HTMLCanvasElement | null = null;
     const lookAhead = new THREE.PerspectiveCamera(60, 1, 1, 6000);
     const fg = new THREE.Scene();
+    // Photoreal can't load (offline, Google down, key restricted at the venue): switch this run to Real city
+    // instead of an empty sky. The saved choice stays Photoreal, so it's tried again next time.
+    let rootLoaded = false, fellBack = false, coverSince = 0, coverY = 0;
+    const fallBack = () => {
+      if (fellBack || disposed) return;
+      fellBack = true;
+      setFlash("📸 Real 3D Boston didn't load, switching to Real city"); setTimeout(() => setFlash(null), 2500);
+      setLook("real");
+    };
     let groundY = -26, groundTarget = -26, groundFound = false, groundT = 0, creditT = 0, photoWaitUntil = Infinity, streetSince = 0, loadT = 0; // Boston streets sit ~26 m under the WGS84 ellipsoid
     const ray = new THREE.Raycaster(), down = new THREE.Vector3(0, -1, 0), rayFrom = new THREE.Vector3(0, 400, 0);
     // dynamic resolution: sharp when the device keeps up, a little softer instead of stuttering when it can't
@@ -723,7 +753,11 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       tiles = new TilesRenderer();
       giveOwnCaches(tiles); // never share a full cache with the main map's city
       tiles.registerPlugin(new GoogleCloudAuthPlugin({ apiToken: tilesKey!, autoRefreshToken: true, useRecommendedSettings: false }));
-      tiles.addEventListener("load-error", (e: any) => console.warn("[street-runner] tile load error", e?.error?.message ?? e?.url ?? e));
+      tiles.addEventListener("load-error", (e: any) => {
+        console.warn("[street-runner] tile load error", e?.error?.message ?? e?.url ?? e);
+        if (!rootLoaded) fallBack(); // Google's city can't be reached at all
+      });
+      tiles.addEventListener("load-root-tileset", () => { rootLoaded = true; });
       // lower error target = more detailed tiles (Google's recommended 20 is built to save data)
       tiles.errorTarget = touchScreen ? 10 : 6;
       // crisp streets at a low viewing angle: full anisotropic filtering on every tile texture
@@ -776,7 +810,18 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
           const y = h.point.y - world.position.y;
           if (y > base - 35 && y < base + 260 && (g === null || y < g)) g = y;
         }
-        if (g !== null) { groundTarget = g; if (!groundFound) groundY = g; groundFound = true; }
+        if (g !== null) {
+          const tNow = performance.now();
+          if (!groundFound || goAt === Infinity) { groundTarget = g; if (!groundFound) groundY = g; groundFound = true; coverSince = 0; } // still loading: take the best guess
+          else if (g - groundTarget > 4) {
+            // something over the track (a roof, a station canopy, a deck): keep running at street level, unless
+            // it's a small step that holds steady for a while (a sharper tile correcting the street height)
+            if (!coverSince || Math.abs(g - coverY) > 2) { coverSince = tNow; coverY = g; }
+            else if (tNow - coverSince > 2500 && g - groundTarget < 6) { groundTarget = g; coverSince = 0; }
+          } else if (groundTarget - g > 12) {
+            // a sudden deep drop is a gap between tiles, not the street
+          } else { groundTarget = g; coverSince = 0; }
+        }
       }
       // glide to the new street level instead of stepping (smooth over curbs, bridges and hills)
       groundY += (groundTarget - groundY) * Math.min(1, dt * 6);
@@ -788,7 +833,10 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
         if (groundFound && prog >= 0.999) streetSince = streetSince || now; else streetSince = 0;
         loadT += dt;
         if (loadT > 0.4) { loadT = 0; setFlash(`📸 Loading real Boston in 3D… ${Math.round(prog * 100)}%`); }
-        if ((streetSince && now - streetSince > 600) || now > photoWaitUntil) {
+        // no street at all after 35 s (slow Wi-Fi, Google down, key blocked): Real city instead of an empty sky
+        if (!groundFound && now > photoWaitUntil + 15000) { fallBack(); return; }
+        // start once the street is in and sharp, or after 20 s with whatever detail has loaded
+        if ((streetSince && now - streetSince > 600) || (groundFound && now > photoWaitUntil)) {
           goAt = now + 3000; state.t0 = goAt; setFlash(null);
         }
       }
@@ -1155,6 +1203,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       window.removeEventListener("resize", onResize);
       tiles?.dispose();
       photoR?.dispose();
+      try { photoR?.forceContextLoss(); } catch { /* already gone */ }
       photoCanvas?.remove();
       mixer?.stopAllAction();
       map.remove();

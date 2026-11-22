@@ -1,0 +1,137 @@
+/* ---- Glass UI over the map: frosted cards, softer shadows, cleaner type (loaded last; styling only) ---- */
+:root {
+  --glass: rgba(16, 18, 26, 0.56);
+  --glass-strong: rgba(14, 16, 24, 0.72);
+  --glass-line: rgba(255, 255, 255, 0.14);
+  --glass-hi: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
+  --glass-blur: blur(18px) saturate(170%);
+}
+
+/* the stats card: your week, streak, stops and school */
+.status {
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-line);
+  border-radius: 22px;
+  padding: 10px 14px 10px 10px;
+  gap: 14px;
+  box-shadow: var(--glass-shadow), var(--glass-hi);
+}
+.status .stat b { font-size: 21px; letter-spacing: -0.01em; }
+.status .stat span { font-size: 10.5px; letter-spacing: 0.08em; color: rgba(255, 255, 255, 0.62); }
+.status .stat + .stat { padding-left: 14px; border-left: 1px solid rgba(255, 255, 255, 0.12); }
+.status .tag { background: rgba(255, 255, 255, 0.08); border-width: 1.5px; border-radius: 999px; padding: 5px 12px; font-weight: 700; }
+
+/* mode chips: Explore, Study, Live, Ride, $0 Boston, Street Runner */
+.layer-chips .chip {
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-line);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22), var(--glass-hi);
+  font-weight: 700;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+.layer-chips .chip:hover { transform: translateY(-1px); background: rgba(24, 27, 38, 0.7); }
+.layer-chips .chip.accent.on { background: var(--accent); color: var(--accent-ink); border-color: transparent; box-shadow: 0 8px 22px rgba(198, 255, 61, 0.35); }
+.layer-chips .run-chip { box-shadow: 0 8px 22px rgba(255, 61, 127, 0.35) !important; }
+
+/* search bar and nearest station */
+.searchbar {
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-line);
+  border-radius: 18px;
+  box-shadow: var(--glass-shadow), var(--glass-hi);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.searchbar:hover { border-color: rgba(198, 255, 61, 0.45); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32), 0 0 0 3px rgba(198, 255, 61, 0.12); }
+.nearest {
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-line);
+  border-radius: 14px;
+  padding: 7px 12px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+}
+
+/* the next-quest card */
+.quest-main {
+  background: linear-gradient(135deg, rgba(198, 255, 61, 0.10), rgba(14, 16, 24, 0) 45%), var(--glass-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid rgba(198, 255, 61, 0.38);
+  border-radius: 22px;
+  padding: 12px 14px;
+  animation: questGlass 2.8s ease-in-out infinite;
+}
+@keyframes questGlass {
+  0%, 100% { box-shadow: 0 12px 32px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(198, 255, 61, 0.10), var(--glass-hi); }
+  50% { box-shadow: 0 12px 32px rgba(0, 0, 0, 0.34), 0 0 26px 2px rgba(198, 255, 61, 0.26), var(--glass-hi); }
+}
+.quest-icon { background: rgba(198, 255, 61, 0.12); border: 1px solid rgba(198, 255, 61, 0.3); border-radius: 14px; }
+.quest-pts { text-shadow: 0 0 18px rgba(198, 255, 61, 0.45); letter-spacing: -0.01em; }
+.quest-week {
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-line);
+  border-radius: 14px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+}
+
+/* bottom bar: a floating glass pill with a glowing Check-in button */
+.bottomnav {
+  left: 10px;
+  right: 10px;
+  bottom: calc(var(--safe-bottom) + 10px);
+  padding: 6px;
+  border-radius: 24px;
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-line);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4), var(--glass-hi);
+  align-items: center;
+}
+/* desktop: keep it centered (styles.css centers it with left: 50% + translateX(-50%)) */
+@media (min-width: 760px) { .bottomnav { left: 50%; right: 0; } }
+.navbtn { border-radius: 16px; transition: background 0.15s ease, color 0.15s ease; }
+.navbtn:hover { background: rgba(255, 255, 255, 0.06); }
+.navbtn.on { color: #fff; background: rgba(255, 255, 255, 0.08); }
+.navbtn.on .ico { filter: drop-shadow(0 0 8px rgba(198, 255, 61, 0.55)); }
+.fab {
+  background: linear-gradient(135deg, #dcff73, #b4f21e);
+  border-radius: 18px;
+  box-shadow: 0 10px 26px rgba(198, 255, 61, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  transition: transform 0.15s ease;
+}
+.fab:hover { transform: translateY(-1px); }
+.fab:active { transform: translateY(1px); }
+
+/* right-side map buttons (layers, my location) and the layers menu */
+.map-tools .icon-btn {
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-line);
+  border-radius: 16px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.3), var(--glass-hi);
+}
+.layer-panel {
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-line);
+  border-radius: 20px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4), var(--glass-hi);
+}
+
+@media (prefers-reduced-motion: reduce) { .quest-main { animation: none; } }
+
+/* phones: a little air between the quest card and the floating bottom bar */
+@media (max-width: 759px) { .quest { bottom: calc(var(--safe-bottom) + 96px); } }
