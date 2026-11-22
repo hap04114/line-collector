@@ -120,3 +120,41 @@ export function screenTipAI(text: string) {
     timeoutMs: 8000,
   });
 }
+
+// ---- embeddings (search by meaning) -------------------------------------------------
+export const EMBED_MODEL = process.env.GEMINI_EMBED_MODEL || "gemini-embedding-001";
+export const EMBED_DIM = 768;
+
+/** Batch-embeds texts; vectors are L2-normalized (needed below 3072 dims). */
+export async function embedTexts(texts: string[], taskType: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY"): Promise<number[][]> {
+  if (!geminiEnabled()) throw new Error("GEMINI_API_KEY not set");
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${EMBED_MODEL}:batchEmbedContents`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-goog-api-key": config.gemini.apiKey },
+    body: JSON.stringify({
+      requests: texts.map((text) => ({ model: `models/${EMBED_MODEL}`, content: { parts: [{ text }] }, taskType, outputDimensionality: EMBED_DIM })),
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) throw new Error(`Gemini embed ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const j: any = await res.json();
+  return j.embeddings.map((e: any) => {
+    const v: number[] = e.values;
+    const n = Math.sqrt(v.reduce((a, b) => a + b * b, 0)) || 1;
+    return v.map((x) => x / n);
+  });
+}
+
+export interface MenuItem { name: string; price: number }
+/** Reads a menu photo into structured items and prices. */
+export function readMenuAI(photo: Buffer, spotName: string) {
+  return generateJson<{ items: MenuItem[]; currency: string; confidence: number }>({
+    system: "You read restaurant menu photos and extract items with prices exactly as printed. Never guess a price that isn't visible.",
+    prompt:
+      `This is a menu photo from "${spotName}" in Boston. Return JSON {"items":[{"name": string, "price": number}], "currency": "USD", "confidence": 0..1}. ` +
+      `Include up to 40 items with a clearly visible price. Skip items without a price. Use the base price if several sizes are listed.`,
+    images: [{ mime: "image/jpeg", data: photo }],
+    timeoutMs: 30_000,
+  });
+}

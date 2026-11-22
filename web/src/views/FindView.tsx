@@ -43,7 +43,7 @@ export function FindView({ initialKind = "food" }: { initialKind?: "food" | "stu
         <button className={kind === "food" ? "on" : ""} onClick={() => setKind("food")}>🍜 Eat</button>
         <button className={kind === "study" ? "on" : ""} onClick={() => setKind("study")}>📚 Study</button>
       </div>
-      <input className="input" autoFocus placeholder={kind === "food" ? "Search: ramen, pizza, a place or station…" : "Search: library, café, station…"} value={text} onChange={(e) => setText(e.target.value)} />
+      <input className="input" autoFocus placeholder={kind === "food" ? "Try: cozy dumplings, cheap · spicy and late · ramen…" : "Search: library, café, station…"} value={text} onChange={(e) => setText(e.target.value)} />
       {kind === "food" && (
         <>
           <div className="row between">
@@ -59,7 +59,7 @@ export function FindView({ initialKind = "food" }: { initialKind?: "food" | "stu
         <button className={`chip ${openNow ? "on" : ""}`} onClick={() => setOpenNow(!openNow)}>🕒 {t("openNow")}</button>
       </div>
       {err && <div className="banner danger">{err}</div>}
-      <div className="small muted">{busy ? "Searching…" : res ? `${res.total} ${kind === "food" ? "places" : "study spots"} within a 20-minute walk` : ""}</div>
+      <div className="small muted">{busy ? "Searching…" : res ? `${res.total} ${kind === "food" ? "places" : "study spots"}${res.mode?.startsWith("meaning") ? "" : " within a 20-minute walk"}` : ""}{res?.mode?.startsWith("meaning") && <span className="tag ok" style={{ marginLeft: 6 }}>🧠 search by {res.mode}</span>}</div>
       <div className="list">
         {res?.spots.map((sp: any) => (
           <button key={sp.id} className="spot" onClick={() => open(sp)}>

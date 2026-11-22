@@ -23,10 +23,12 @@
     "bake:rent": "tsx scripts/bake-rent.ts",
     "bake:vibes": "tsx scripts/bake-vibes.ts",
     "solana:wallet": "tsx scripts/solana-wallet.ts",
-    "merge:diet": "tsx scripts/merge-diet.ts"
+    "merge:diet": "tsx scripts/merge-diet.ts",
+    "embed:spots": "tsx scripts/embed-spots.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.124",
+    "@aws-sdk/client-s3": "^3.1175.0",
     "@electric-sql/pglite": "^0.5.17",
     "@mastra/core": "^1.85.0",
     "@solana/web3.js": "^1.99.0",
@@ -37,6 +39,7 @@
     "multer": "^2.5.0",
     "opening_hours": "^3.16.0",
     "pg": "^8.23.1",
+    "qrcode": "^1.5.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "sharp": "^0.35.5",
@@ -50,6 +53,7 @@
     "@types/multer": "^2.3.0",
     "@types/node": "^26.6.6",
     "@types/pg": "^8.23.1",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/three": "^0.187.0",

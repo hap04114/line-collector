@@ -22,6 +22,7 @@ import { activeEvents, evaluateEvents } from "./events.js";
 import { formatReasons, scoreCheckin, type ScoreResult } from "./scoring.js";
 import { lineStatuses } from "./transit.js";
 import { schoolById } from "../data/schools.js";
+import { putObject } from "../lib/storage.js";
 
 export interface CheckinRequest {
   spotId: string;
@@ -123,7 +124,10 @@ export async function checkIn(db: Db, user: any, req: CheckinRequest): Promise<C
     verifyNote = v.reason;
   }
 
-  return db.tx((q) => scoreAndSave(q, { user, spot, now, photoHash, verified, verifyNote, distanceM, isDemo: !!req.isDemo }));
+  const result = await db.tx((q) => scoreAndSave(q, { user, spot, now, photoHash, verified, verifyNote, distanceM, isDemo: !!req.isDemo }));
+  // keep the photo privately (audit of disputed check-ins); never shown to other students
+  if (photo) putObject(`checkins/${user.id}/${result.checkinId}.jpg`, photo, "image/jpeg", false).catch(() => {});
+  return result;
 }
 
 async function finalizePending(db: Db, id: string, user: any, spot: any, ts: Date, photoHash: string | null, distanceM: number, v: { ok: boolean; isScreenOrScreenshot: boolean; reason: string }) {
@@ -263,7 +267,6 @@ async function scoreAndSave(q: Queryable, a: SaveArgs): Promise<CheckinResult> {
 
   // --- badges ------------------------------------------------------------------
   const newBadges = await awardBadges(q, user.id, { isNewStop, completedLines, flags: score.flags, friend: !!friend });
-  for (const b of newBadges) if (b.startsWith("line-") && solanaEnabled() && !a.isDemo) queueSolana(user, b);
 
   // --- partner stamp -------------------------------------------------------------
   const stamp = await partnerStamps(q, user.id, spot.id);

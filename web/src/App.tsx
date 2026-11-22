@@ -5,6 +5,8 @@ import { nearestStation, StoreProvider, useQuest, useStore, type Mode } from "./
 import { StreetRunner } from "./views/StreetRunner";
 import { FindView } from "./views/FindView";
 import { FirstWeekView, Welcome, useFirstWeek } from "./views/FirstWeek";
+import { ProofView } from "./views/ProofView";
+import { api } from "./api";
 import { MapView } from "./components/MapView";
 import { StationSheet } from "./components/StationSheet";
 import { CheckinFlow } from "./components/CheckinFlow";
@@ -41,6 +43,17 @@ function Shell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s.me?.user?.id]);
 
+  useEffect(() => {
+    const id = new URLSearchParams(location.search).get("spot");
+    if (!id || !s.statics) return;
+    api.get(`/spots/${id}`).then((r) => {
+      s.openStation(r.spot.stationId);
+      s.flyTo(r.spot.lat, r.spot.lon, 16.5);
+      history.replaceState(null, "", "/");
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.statics]);
+
   if (!s.config) return <div className="signin"><div className="signin-wrap"><div className="logo">Line <i>Collector</i></div><p className="muted">Loading…</p></div></div>;
   if (!s.me && !s.signedOutBrowse) return <SignIn />;
 
@@ -56,6 +69,7 @@ function Shell() {
       {s.panel === "ride" && <RideView />}
       {s.panel === "find" && <FindView />}
       {s.panel === "week" && <FirstWeekView />}
+      {s.panel === "proof" && <ProofView />}
       {s.panel === "welcome" && <Welcome onDone={() => s.setPanel("week")} />}
       {s.checkinSpot && <CheckinFlow />}
       {!s.panel && !s.stationId && !s.checkinSpot && s.me && <QuestCard />}

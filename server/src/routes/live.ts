@@ -20,6 +20,7 @@ import { dHash, hamming, NEAR_DUPLICATE_BITS, normalizePhoto } from "../lib/phot
 import { nearestStations, rentCache, stationById } from "../lib/static.js";
 import { HttpError, firstName, newId, rateLimit } from "../lib/util.js";
 import { checkListing, typicalRent } from "../services/listing.js";
+import { putObject } from "../lib/storage.js";
 
 export const liveRoutes = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024, files: 5 } });
@@ -112,9 +113,7 @@ liveRoutes.post("/sublets", requireUser, upload.array("photos", 5), async (req, 
     if (earlier.some((e) => hamming(e, h) <= NEAR_DUPLICATE_BITS)) {
       throw new HttpError(422, `Photo ${i + 1} matches a photo from an earlier listing. Reused photos are blocked.`);
     }
-    const name = `${id}-${i}.jpg`;
-    writeFileSync(resolve(UPLOAD_DIR, "sublets", name), img);
-    photos.push(`/uploads/sublets/${name}`);
+    photos.push(await putObject(`sublets/${id}-${i}.jpg`, img, "image/jpeg", true));
     hashes.push(h);
   }
 

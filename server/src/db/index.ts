@@ -19,6 +19,8 @@ export interface Db extends Queryable {
   timescale: boolean;
   /** continuous aggregates actually created (Timescale only) */
   caggs?: string[];
+  /** pgvector available (Tiger Cloud) */
+  vector?: boolean;
   one<T = any>(sql: string, params?: unknown[]): Promise<T | null>;
   tx<T>(fn: (q: Queryable) => Promise<T>): Promise<T>;
   exec(sql: string): Promise<void>;

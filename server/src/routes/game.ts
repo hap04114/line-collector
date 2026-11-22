@@ -338,6 +338,20 @@ gameRoutes.get("/find", async (req, res) => {
     origin = `campus:${sc.short}`;
   }
   const kind = req.query.kind === "study" ? "study" : "food";
+  const q = req.query.q ? String(req.query.q).slice(0, 80) : "";
+  if (q.length >= 3 && kind === "food") {
+    const { semanticReady, semanticSearch } = await import("./extra.js");
+    if (await semanticReady(db)) {
+      try {
+        let spots = await semanticSearch(db, q, lat, lon, Math.min(4000, Number(req.query.radius) || 2500), req.user?.id ?? null);
+        if (req.query.budget) spots = spots.filter((x: any) => x.kind !== "food" || x.priceCents <= Math.round(Number(req.query.budget) * 100));
+        if (req.query.openNow === "true") spots = spots.filter((x: any) => x.openNow === true);
+        return res.json({ origin, lat, lon, kind, mode: db.vector ? "meaning (Gemini embeddings + pgvector on Tiger)" : "meaning (Gemini embeddings)", total: spots.length, spots });
+      } catch (e) {
+        console.warn("[find] semantic search failed:", (e as Error).message);
+      }
+    }
+  }
   const r = await nearbySpots(db, {
     lat, lon, kind,
     budgetCents: req.query.budget ? Math.round(Number(req.query.budget) * 100) : undefined,
@@ -348,7 +362,7 @@ gameRoutes.get("/find", async (req, res) => {
     userId: req.user?.id ?? null,
     radiusM: Math.min(4000, Number(req.query.radius) || 1600),
   });
-  res.json({ origin, lat, lon, kind, ...r });
+  res.json({ origin, lat, lon, kind, mode: q ? "keywords" : "nearby", ...r });
 });
 
 /**

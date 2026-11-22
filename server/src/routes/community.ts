@@ -7,7 +7,8 @@ import { requireOwner, requireUser } from "../auth.js";
 import { schoolById } from "../data/schools.js";
 import { geminiEnabled, screenTipAI } from "../lib/gemini.js";
 import { stationById } from "../lib/static.js";
-import { HttpError, firstName, newId, rateLimit, sixDigitCode } from "../lib/util.js";
+import { HttpError, firstName, newId, rateLimit, sha256, sixDigitCode } from "../lib/util.js";
+import { recordOnSolana, solanaEnabled } from "../lib/external.js";
 import { maybeLocalGuide } from "../services/badges.js";
 import { partnerStamps } from "../services/checkin.js";
 
@@ -176,7 +177,11 @@ communityRoutes.get("/partners/stats", requireOwner, async (req, res) => {
     `SELECT count(*)::int AS n FROM redemptions r JOIN offers o ON o.id=r.offer_id WHERE o.partner_id=$1 AND r.redeemed_at IS NOT NULL`,
     [req.ownerPartnerId],
   );
-  res.json({ byHour, visits30d: totals?.visits ?? 0, students30d: totals?.students ?? 0, redemptions: red?.n ?? 0, source: db.timescale ? "Tiger Data continuous aggregate (spot_visits_hourly)" : "spot_visits_hourly view" });
+  const recent = await db.query(
+    `SELECT r.redeemed_at, r.solana_sig, o.title FROM redemptions r JOIN offers o ON o.id=r.offer_id WHERE o.partner_id=$1 AND r.redeemed_at IS NOT NULL ORDER BY r.redeemed_at DESC LIMIT 8`,
+    [req.ownerPartnerId],
+  );
+  res.json({ recent: recent.map((x: any) => ({ at: x.redeemed_at, reward: x.title, solana: x.solana_sig ? `https://explorer.solana.com/tx/${x.solana_sig}?cluster=devnet` : null })), byHour, visits30d: totals?.visits ?? 0, students30d: totals?.students ?? 0, redemptions: red?.n ?? 0, source: db.timescale ? "Tiger Data continuous aggregate (spot_visits_hourly)" : "spot_visits_hourly view" });
 });
 
 communityRoutes.post("/partners/offers", requireOwner, async (req, res) => {
@@ -221,5 +226,13 @@ communityRoutes.post("/partners/confirm", requireOwner, async (req, res) => {
   if (r.redeemed_at) throw new HttpError(409, "Code already used");
   if (new Date(r.expires_at) < new Date()) throw new HttpError(410, "Code expired. Ask the student to tap Redeem again.");
   await db.query("UPDATE redemptions SET redeemed_at=now() WHERE id=$1", [r.id]);
+  // on-chain receipt: the business can verify the redemption without trusting our app
+  if (solanaEnabled()) {
+    const p = await db.one("SELECT s.name FROM partners p JOIN spots s ON s.id=p.spot_id WHERE p.id=$1", [req.ownerPartnerId]);
+    const receipt = sha256(`${r.id}|${code}|${Date.now()}`).slice(0, 16);
+    recordOnSolana(`LineCollector reward redeemed | ${p?.name ?? "partner"} | ${r.title} | receipt ${receipt}`)
+      .then((sig) => db.query("UPDATE redemptions SET solana_sig=$2 WHERE id=$1", [r.id, sig]))
+      .catch((e) => console.warn("[solana] receipt failed:", e.message));
+  }
   res.json({ ok: true, reward: r.title, student: firstName(r.display_name) });
 });

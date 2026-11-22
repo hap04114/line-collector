@@ -126,6 +126,26 @@ function Dashboard({ me, reload }: { me: any; reload: () => void }) {
           )}
           <button className="btn primary" onClick={saveOffer}>Save offer</button>
         </div>
+        <div className="card col poster">
+          <b>Counter poster</b>
+          <div className="small muted">Print this for your counter. Students scan it to find you and collect your stop.</div>
+          <div className="center" style={{ background: "#fff", color: "#0d0e12", borderRadius: 16, padding: 16 }}>
+            <div style={{ fontWeight: 900, fontSize: 22 }}>📍 {me.partner.name}</div>
+            <div style={{ fontWeight: 700 }}>is a Line Collector local partner</div>
+            <img alt="QR code" src={`/api/qr.svg?text=${encodeURIComponent(`${location.origin}/?spot=${me.partner.spotId}`)}`} style={{ width: 200, height: 200, margin: "10px auto", display: "block" }} />
+            <div style={{ fontSize: 14 }}>Scan · check in · collect the {me.partner.station} stop · earn a stamp</div>
+          </div>
+          <button className="btn" onClick={() => window.print()}>🖨️ Print poster</button>
+        </div>
+        {stats?.recent?.length > 0 && (
+          <div className="card col">
+            <b>Recent redemptions</b>
+            {stats.recent.map((r: any, i: number) => (
+              <div key={i} className="row between small"><span>{r.reward} · {new Date(r.at).toLocaleString()}</span>{r.solana ? <a href={r.solana} target="_blank" rel="noreferrer">on-chain receipt ↗</a> : <span className="muted">no receipt</span>}</div>
+            ))}
+            <div className="tiny muted">Each redemption is written to Solana devnet as a receipt you can verify without trusting our app.</div>
+          </div>
+        )}
         <p className="tiny muted">Free for owners. Students see a “Local partner” badge on your pin. Stamps are separate from leaderboard points, so redeeming never costs a student their rank.</p>
       </div>
     </div>

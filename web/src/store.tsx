@@ -15,7 +15,7 @@ export interface Statics {
 }
 export interface MapState { collected: string[]; stamps: string[]; weekOwners: Record<string, { school: string; checkins: number }>; lines: { routeId: string; chaos: number; shuttle: boolean; alertCount: number }[] }
 export type Mode = "explore" | "study" | "live" | "ride";
-export type Panel = null | "plan" | "board" | "me" | "live" | "ride" | "run" | "find" | "week" | "welcome";
+export type Panel = null | "plan" | "board" | "me" | "live" | "ride" | "run" | "find" | "week" | "welcome" | "proof";
 export interface Pos { lat: number; lon: number; accuracy: number }
 
 interface Store {

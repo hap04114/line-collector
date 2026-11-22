@@ -74,7 +74,8 @@ export function BoardView() {
             ))}
           </div>
           <div className="tiny muted">
-            Ranked by average points per active player (min {board.minPlayers}), so big schools don't win by size. {t("demoNote")} Source: {board.source}.
+            Ranked by average points per active player (min {board.minPlayers}), so big schools don't win by size. {t("demoNote")} Source: {board.source}.{" "}
+            <button className="btn sm ghost" onClick={() => s.setPanel("proof")}>🔧 How it's built</button>
           </div>
           {timeline && <Timeline data={timeline} />}
         </>
@@ -144,13 +145,27 @@ function Timeline({ data }: { data: { weekStart: string; rows: { hour: string; s
   }, [data]);
   const max = Math.max(1, ...series.out.map((x) => x.pts[x.pts.length - 1] ?? 0));
   const W = 320, H = 130;
+  const [upto, setUpto] = useState(series.hours);
+  const replay = () => {
+    let i = 0;
+    const t = setInterval(() => {
+      i += Math.max(1, Math.round(series.hours / 60));
+      setUpto(Math.min(i, series.hours));
+      if (i >= series.hours) clearInterval(t);
+    }, 50);
+  };
+  const leader = series.out.map((x) => ({ id: x.id, v: x.pts[Math.max(0, upto - 1)] ?? 0 })).sort((a, b) => b.v - a.v)[0];
   return (
     <div className="card">
-      <b className="small">The race this week (cumulative points)</b>
+      <div className="row between">
+        <b className="small">The race this week (cumulative points)</b>
+        <button className="btn sm" onClick={replay}>▶ Replay</button>
+      </div>
+      {upto < series.hours && leader && <div className="tiny">Leader: <b style={{ color: s.schoolById.get(leader.id)?.color }}>{s.schoolById.get(leader.id)?.short}</b> · {Math.round((upto / 24) * 10) / 10} days in</div>}
       <svg className="chart" viewBox={`0 0 ${W} ${H + 16}`}>
         {series.out.map((x) => (
           <polyline key={x.id} fill="none" stroke={s.schoolById.get(x.id)?.color} strokeWidth={2.2}
-            points={x.pts.map((v, i) => `${(i / Math.max(1, series.hours - 1)) * W},${H - (v / max) * H}`).join(" ")} />
+            points={x.pts.slice(0, Math.max(1, upto)).map((v, i) => `${(i / Math.max(1, series.hours - 1)) * W},${H - (v / max) * H}`).join(" ")} />
         ))}
         {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d, i) => (
           <text key={d} x={(i * 24 / Math.max(1, series.hours - 1)) * W} y={H + 13} fontSize="9" fill="#b4b8c4">{i * 24 < series.hours ? d : ""}</text>

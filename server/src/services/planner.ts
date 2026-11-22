@@ -232,6 +232,13 @@ async function planFallback(query: string, c: Ctx): Promise<Plan> {
 }
 
 export async function plan(query: string, c: Ctx): Promise<Plan> {
+  // primary: the Mastra workflow (understand → remember → propose → check → study → write)
+  try {
+    const { planWorkflow } = await import("./workflow.js");
+    return await planWorkflow(query, c);
+  } catch (e) {
+    console.warn("[planner] workflow failed, trying agent/fallback:", (e as Error).message);
+  }
   if (geminiEnabled()) {
     try {
       return await planWithMastra(query, c);

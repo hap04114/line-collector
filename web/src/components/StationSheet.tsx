@@ -4,6 +4,7 @@ import { useI18n } from "../i18n";
 import { LinePill, spotEmoji, useStore, type Mode } from "../store";
 import { onSpotPinClick, showSpotPins } from "./MapView";
 import { Sheet, Stepper } from "./Sheet";
+import { BusyHeat, MenuReader } from "./SpotExtras";
 
 export function StationSheet() {
   const s = useStore();
@@ -112,9 +113,10 @@ function SpotDetail({ spotId }: { spotId: string }) {
   const { t } = useI18n();
   const [d, setD] = useState<any>(null);
   const [rating, setRating] = useState({ outlets: 3, noise: 3, wifi: 3 });
+  const [rev, setRev] = useState(0);
   useEffect(() => {
     api.get(`/spots/${spotId}`).then(setD).catch(() => {});
-  }, [spotId]);
+  }, [spotId, rev]);
   if (!d) return null;
   const sp = d.spot;
   const rate = async () => {
@@ -133,6 +135,9 @@ function SpotDetail({ spotId }: { spotId: string }) {
         {sp.address ?? ""} {sp.hours && <><br />Hours: <span className="mono tiny">{sp.hours}</span></>}
       </div>
       {sp.priceSource === "estimate" && sp.kind === "food" && <div className="tiny muted">Price is an estimate from the type of place, not a checked menu price.</div>}
+      {sp.priceSource === "menu" && <div className="tiny" style={{ color: "var(--ok)" }}>✓ Price from a menu photo a student shared{sp.cheapestItem ? `: cheapest is ${sp.cheapestItem}` : ""}</div>}
+      {sp.kind === "food" && <MenuReader spotId={sp.id} onUpdated={() => setRev(rev + 1)} />}
+      <BusyHeat spotId={sp.id} />
       {d.stamp && (
         <div className="banner" style={{ borderColor: "#ffd16666" }}>
           <div className="row between"><b>⭐ {d.stamp.offer}</b>{d.stamp.isSample && <span className="tag warn">{t("sampleOffer")}</span>}</div>

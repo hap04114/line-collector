@@ -118,6 +118,16 @@ CREATE TABLE IF NOT EXISTS spots (
 CREATE INDEX IF NOT EXISTS spots_station_idx ON spots (station_id);
 ALTER TABLE spots ADD COLUMN IF NOT EXISTS diet text[] NOT NULL DEFAULT '{}';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS rights_checked boolean NOT NULL DEFAULT false;
+ALTER TABLE redemptions ADD COLUMN IF NOT EXISTS solana_sig text;
+CREATE TABLE IF NOT EXISTS menu_items (
+  id text PRIMARY KEY,
+  spot_id text NOT NULL,
+  user_id text,
+  name text NOT NULL,
+  price_cents int NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS menu_items_spot_idx ON menu_items (spot_id);
 
 CREATE TABLE IF NOT EXISTS checkins (
   id text NOT NULL,
@@ -475,6 +485,19 @@ export async function migrate(db: Db) {
   for (const [view, sql] of Object.entries(FALLBACK_VIEWS)) if (!caggs.has(view)) await db.exec(sql);
   await db.exec(SCHOOL_VIEW);
   db.caggs = [...caggs];
+  // search by meaning: pgvector on Tiger Cloud / Postgres; plain float arrays (JS cosine) on PGlite
+  db.vector = false;
+  if (db.kind === "postgres") {
+    try {
+      await db.exec("CREATE EXTENSION IF NOT EXISTS vector");
+      await db.exec("CREATE TABLE IF NOT EXISTS spot_embeddings (spot_id text PRIMARY KEY, model text NOT NULL, embedding vector(768) NOT NULL)");
+      await db.exec("CREATE INDEX IF NOT EXISTS spot_embeddings_hnsw ON spot_embeddings USING hnsw (embedding vector_cosine_ops)");
+      db.vector = true;
+    } catch (e) {
+      console.warn(`[db] pgvector unavailable: ${(e as Error).message.split(String.fromCharCode(10))[0]}`);
+    }
+  }
+  if (!db.vector) await db.exec("CREATE TABLE IF NOT EXISTS spot_embeddings (spot_id text PRIMARY KEY, model text NOT NULL, embedding real[] NOT NULL)");
   console.log(
     `[db] ${db.kind}${db.timescale ? ` + TimescaleDB (hypertables; continuous aggregates: ${[...caggs].join(", ") || "none"})` : " (plain views)"} ready`,
   );

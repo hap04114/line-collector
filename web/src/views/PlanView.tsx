@@ -11,7 +11,7 @@ const EXAMPLES = [
   "$12 taste of home, and is rent cheap around there?",
 ];
 
-const TOOL_ICON: Record<string, string> = { nearestStations: "📍", lineAlerts: "🚦", findFood: "🍜", findStudySpots: "📚", rentSnapshot: "🏠", weatherNow: "🌡️" };
+const TOOL_ICON: Record<string, string> = { understand: "🧠", remember: "💾", propose: "📍", check: "✅", study: "📚", write: "✍️", nearestStations: "📍", lineAlerts: "🚦", findFood: "🍜", findStudySpots: "📚", rentSnapshot: "🏠", weatherNow: "🌡️" };
 
 export function PlanView() {
   const s = useStore();
@@ -43,7 +43,7 @@ export function PlanView() {
   };
 
   return (
-    <Sheet title={`✨ ${t("planTitle")}`} sub="Mastra agent · Gemini · live MBTA" onClose={() => s.setPanel(null)} full>
+    <Sheet title={`✨ ${t("planTitle")}`} sub="Mastra workflow · Gemini · live MBTA · your history" onClose={() => s.setPanel(null)} full>
       <div className="field">
         <label htmlFor="pq">{t("planHint")}</label>
         <textarea id="pq" className="input" style={{ minHeight: 80 }} value={q} onChange={(e) => setQ(e.target.value)} placeholder={EXAMPLES[0]} />
@@ -66,7 +66,7 @@ export function PlanView() {
               </div>
             )}
           </div>
-          <h3>🛠️ {t("agentSteps")} ({res.steps.length})</h3>
+          <h3>🛠️ Workflow steps ({res.steps.length})</h3>
           <div className="steps">
             {res.steps.map((st: any, i: number) => (
               <div key={i} className="step" onClick={() => setOpen(open === i ? null : i)} role="button">

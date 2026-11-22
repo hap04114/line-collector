@@ -151,6 +151,7 @@ export function MeView() {
         <button className="btn primary" onClick={save}>{t("save")}</button>
       </div>
       <div className="small muted">{t("friendCode")}: <b className="mono">{me.user.friendCode}</b></div>
+      <button className="btn ghost" onClick={() => s.setPanel("proof")}>🔧 How it's built (live)</button>
       <button className="btn danger" onClick={signOut}>{t("signOut")}</button>
     </Sheet>
   );
