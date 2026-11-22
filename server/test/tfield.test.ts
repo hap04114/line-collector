@@ -116,6 +116,8 @@ describe("Google Places enrichment", () => {
   it("only accepts the same place nearby", () => {
     expect(sameName("Amelia's Taqueria", "Amelia’s Taqueria Boston")).toBe(true);
     expect(sameName("Pavement Coffeehouse", "Tatte Bakery")).toBe(false);
+    expect(sameName("Mamacitas", "Mamacita Mexican Comida")).toBe(true); // plural "s" only
+    expect(sameName("The Eatery at Stetson East", "Food Hall at Stetson West")).toBe(false);
     const spot = { name: "Pavement Coffeehouse", lat: 42.3478, lon: -71.0874 };
     const ok = shapePlace(spot, { id: "x", displayName: { text: "Pavement Coffeehouse" }, location: { latitude: 42.3479, longitude: -71.0875 }, rating: 4.5, userRatingCount: 812, businessStatus: "OPERATIONAL", priceRange: { startPrice: { units: "1" }, endPrice: { units: "10" } } });
     expect(ok).toMatchObject({ matched: true, rating: 4.5, priceMinCents: 100, priceMaxCents: 1000, businessStatus: "operational" });

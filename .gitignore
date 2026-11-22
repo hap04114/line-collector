@@ -8,3 +8,7 @@ web/dist
 .DS_Store
 solana-wallet.json
 extension/*.zip
+
+# Google Places results (ratings, prices, hours): Google's terms don't allow storing or republishing them,
+# so they stay on the machine that runs the demo (npm run enrich:google), never in git
+data/google-places.json
