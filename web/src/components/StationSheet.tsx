@@ -5,7 +5,7 @@ import { LinePill, spotEmoji, useStore, type Mode } from "../store";
 import { onSpotPinClick, showSpotPins } from "./MapView";
 import { Sheet, Stepper } from "./Sheet";
 import { BusyHeat, MenuReader } from "./SpotExtras";
-import { FoodFilters, GetThere, SpotBadges, tfieldQuery, useTFieldPrefs } from "./TFieldBits";
+import { FoodFilters, GetThere, SpotBadges, tfieldQuery, useTFieldPrefs, WhenPicker } from "./TFieldBits";
 
 export function StationSheet() {
   const s = useStore();
@@ -198,7 +198,7 @@ function EatTab({ stationId, selected, setSelected }: { stationId: string; selec
       .catch(() => {})
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stationId, budget, craving, vibe, openNow, openLate, limit, tfq.avoid, tfq.venue, tfq.showClosed]);
+  }, [stationId, budget, craving, vibe, openNow, openLate, limit, tfq.avoid, tfq.venue, tfq.showClosed, tfq.arriveIn]);
   useEffect(() => {
     if (res) showSpotPins([...res.food, ...res.landmarks].map((x: any) => ({ id: x.id, name: x.name, lat: x.lat, lon: x.lon, partner: !!x.partner, kind: x.kind })), selected);
   }, [selected, res]);
@@ -228,6 +228,7 @@ function EatTab({ stationId, selected, setSelected }: { stationId: string; selec
           <button key={v} className={`chip ${vibe === v ? "on" : ""}`} onClick={() => setVibe(vibe === v ? "" : v)}>{v}</button>
         ))}
       </div>
+      <WhenPicker />
       <FoodFilters />
       <div className="list" aria-busy={loading}>
         {res?.food.map((sp: any) => (

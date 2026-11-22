@@ -3,10 +3,13 @@
  *   GET /api/tfield/meta                       allergen list, venue types, disclaimer, whether Google is on
  *   GET /api/travel?lat&lon&toLat&toLon&speed&accessible&modes=walk,t,t_bus,bike,rideshare
  *   GET /api/bluebikes/near?lat&lon&need=bike|dock
+ *   GET /api/reach?lat&lon&minutes=20      stations reachable by T within N minutes (transit wave)
  */
 import { Router } from "express";
 import { z } from "zod";
+import { getDb } from "../db/index.js";
 import { HttpError, rateLimit } from "../lib/util.js";
+import { reach } from "../services/reach.js";
 import { getDocks, nearestDocks } from "../services/bluebikes.js";
 import { ALLERGEN_DISCLAIMER, ALLERGENS, ALLERGEN_UMBRELLA, VENUE_TYPES } from "../services/tfield.js";
 import { estimate, google, googleKey, PRESETS, SPEED, type Option, type Preset } from "../services/travel.js";
@@ -65,4 +68,19 @@ tfieldRoutes.get("/bluebikes/near", async (req, res) => {
   } catch {
     throw new HttpError(503, "Blue Bikes live data isn't answering right now");
   }
+});
+
+// ---- transit wave: stations reachable within N minutes, uncollected ones flagged ----------------------
+tfieldRoutes.get("/reach", async (req, res) => {
+  const q = z.object({
+    lat: z.coerce.number().min(41).max(43.5), lon: z.coerce.number().min(-72.5).max(-70),
+    minutes: z.coerce.number().int().min(5).max(60).default(20),
+    speed: z.coerce.number().min(SPEED.min).max(SPEED.max).default(SPEED.walk),
+  }).parse(req.query);
+  const user = (req as any).user;
+  const collected = new Set<string>(
+    user ? (await (await getDb()).query("SELECT station_id FROM collections WHERE user_id=$1", [user.id])).map((r: any) => r.station_id) : [],
+  );
+  const stations = reach(q.lat, q.lon, q.minutes, q.speed).map((s) => ({ ...s, collected: collected.has(s.id) }));
+  res.json({ minutes: q.minutes, total: stations.length, uncollected: stations.filter((s) => !s.collected).length, stations });
 });

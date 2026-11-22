@@ -3,6 +3,7 @@ import { api, qs } from "../api";
 import { useI18n } from "../i18n";
 import { useStore } from "../store";
 import { Sheet } from "../components/Sheet";
+import { ReachCard } from "../components/TFieldBits";
 
 // The planner reads plain text ("$10, two hours, spicy food, then somewhere quiet to study"),
 // so these controls write that sentence for the student instead of making them type it.
@@ -186,6 +187,7 @@ export function PlanView() {
           <div className="tiny muted">Hours can change on holidays and by season. Check before you go.</div>
         </div>
       )}
+      <ReachCard />
     </Sheet>
   );
 }

@@ -3,6 +3,7 @@ import { api } from "../api";
 import { useI18n } from "../i18n";
 import { nearestStation, useStore } from "../store";
 import { Sheet } from "../components/Sheet";
+import { HousingFinder } from "../components/HousingFinder";
 
 const SAMPLE_LISTING = `EXAMPLE LISTING (made up for the demo)
 Sunny 1BR near Northeastern, only $950/mo! Broker fee: one month's rent.
@@ -12,16 +13,18 @@ Please wire the deposit today to hold it, many applicants are interested. Text m
 export function LiveView() {
   const s = useStore();
   const { t } = useI18n();
-  const [tab, setTab] = useState<"check" | "list" | "post" | "mine">("check");
+  const [tab, setTab] = useState<"find" | "check" | "list" | "post" | "mine">("find");
   return (
     <Sheet title={`🏠 ${t("live")}`} sub="Scout where to live next year" onClose={() => { s.setPanel(null); s.setMode("explore"); }} full>
       <div className="seg">
+        <button className={tab === "find" ? "on" : ""} onClick={() => setTab("find")}>🔑 Find a place</button>
         <button className={tab === "check" ? "on" : ""} onClick={() => setTab("check")}>{t("listingCheck")}</button>
         <button className={tab === "list" ? "on" : ""} onClick={() => setTab("list")} disabled={!s.me}>{t("sublets")}</button>
         <button className={tab === "post" ? "on" : ""} onClick={() => setTab("post")} disabled={!s.me}>{t("postSublet")}</button>
         <button className={tab === "mine" ? "on" : ""} onClick={() => setTab("mine")} disabled={!s.me}>{t("mine")}</button>
       </div>
       <div className="banner warn small">🛡️ {t("neverPay")}</div>
+      {tab === "find" && <HousingFinder onCheckListing={() => setTab("check")} onSublets={() => setTab("list")} />}
       {tab === "check" && <ListingCheck />}
       {tab === "list" && <SubletList />}
       {tab === "post" && <PostSublet onDone={() => setTab("mine")} />}
