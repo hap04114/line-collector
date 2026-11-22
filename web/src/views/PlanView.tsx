@@ -29,6 +29,17 @@ const NEXT: { id: "study" | "late" | "rent"; label: string; words: string }[] = 
 
 const HOURS = [1, 2, 3];
 
+const EXPLORE: { id: string; label: string }[] = [
+  { id: "park", label: "🌳 Parks" },
+  { id: "view", label: "🌇 River & skyline views" },
+  { id: "landmark", label: "🏛️ Landmarks & history" },
+  { id: "museum", label: "🖼️ Museums" },
+  { id: "campus", label: "🎓 Campuses" },
+  { id: "library", label: "📚 Libraries" },
+  { id: "market", label: "🛍️ Markets" },
+];
+const CAT_ICON: Record<string, string> = { park: "🌳", view: "🌇", landmark: "🏛️", museum: "🖼️", campus: "🎓", library: "📚", market: "🛍️" };
+
 export function buildPlanQuery(o: { budget: number; hours: number; food: string; next: string[] }) {
   const food = FOODS.find((f) => f.id === o.food)?.words;
   return [
@@ -39,6 +50,36 @@ export function buildPlanQuery(o: { budget: number; hours: number; food: string;
   ].filter(Boolean).join(", ");
 }
 
+function ExploreCard({ x, onGo }: { x: any; onGo: () => void }) {
+  const h = x.hours;
+  const status = h.allDay ? <span className="tag ok">Open 24 hours</span>
+    : h.openNow === true ? <span className="tag ok">Open now</span>
+    : h.openNow === false ? <span className="tag">Closed now</span>
+    : null;
+  return (
+    <div className="card col" style={{ gap: 6 }}>
+      <div className="row between" style={{ alignItems: "flex-start" }}>
+        <div className="grow">
+          <b>{CAT_ICON[x.cat] ?? "📍"} {x.name}</b>
+          <div className="tiny muted">
+            {x.walkMin <= 25 ? `${x.walkMin} min walk` : `${(x.distanceM / 1000).toFixed(1)} km · take the T`}{x.station && <> · T: {x.station} {x.lines.slice(0, 2).map((l: any) => <span key={l.id} className="fb-line" style={{ background: l.color }}>{l.short.replace("Green ", "")}</span>)}</>}
+          </div>
+        </div>
+        {status}
+      </div>
+      {(h.today || h.next) && (
+        <div className="small">🕒 {h.allDay ? "Open all day" : <>Today: <b>{h.today}</b></>}{h.next && !h.allDay && <span className="muted"> · {h.next}</span>}</div>
+      )}
+      {h.note && <div className="tiny muted">{h.note}</div>}
+      <div className="small muted">{x.blurb}</div>
+      <div className="row between">
+        <span className="tiny muted">{x.costNote ?? (x.costCents === 0 ? "Free" : `About $${Math.round(x.costCents / 100)}`)}</span>
+        <button className="btn sm primary" onClick={onGo}>Go</button>
+      </div>
+    </div>
+  );
+}
+
 export function PlanView() {
   const s = useStore();
   const { t } = useI18n();
@@ -46,21 +87,32 @@ export function PlanView() {
   const [hours, setHours] = useState(2);
   const [food, setFood] = useState("");
   const [next, setNext] = useState<string[]>(["study"]);
+  const [explore, setExplore] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<any>(null);
+  const [spots, setSpots] = useState<any[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const run = async () => {
     setBusy(true);
     setErr(null);
     setRes(null);
-    try {
-      setRes(await api.get(`/plan?${qs({ q: buildPlanQuery({ budget, hours, food, next }), lat: s.pos?.lat, lon: s.pos?.lon })}`));
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+    setSpots(null);
+    const where = { lat: s.pos?.lat, lon: s.pos?.lon };
+    // the stop plan and the explore list don't depend on each other, so ask for both at once
+    const [plan, nearby] = await Promise.allSettled([
+      api.get(`/plan?${qs({ q: buildPlanQuery({ budget, hours, food, next }), ...where })}`),
+      explore.length ? api.get(`/explore-nearby?${qs({ cats: explore.join(","), limit: 6, ...where })}`) : Promise.resolve(null),
+    ]);
+    if (plan.status === "fulfilled") setRes(plan.value);
+    else setErr((plan.reason as Error).message);
+    if (nearby.status === "fulfilled" && nearby.value) setSpots(nearby.value.places);
+    setBusy(false);
+  };
+  const goTo = (x: { stationId: string; lat: number; lon: number }) => {
+    s.setPanel(null);
+    s.openStation(x.stationId);
+    s.flyTo(x.lat, x.lon, 16.2);
   };
   const show = (stationId: string) => {
     const st = s.stationById.get(stationId);
@@ -102,6 +154,16 @@ export function PlanView() {
         </div>
       </div>
 
+      <div className="field">
+        <label>What would you like to explore today? <span className="muted">(pick any)</span></label>
+        <div className="chips" style={{ flexWrap: "wrap" }}>
+          {EXPLORE.map((x) => (
+            <button key={x.id} className={`chip ${explore.includes(x.id) ? "on" : ""}`}
+              onClick={() => setExplore((o) => (o.includes(x.id) ? o.filter((v) => v !== x.id) : [...o, x.id]))}>{x.label}</button>
+          ))}
+        </div>
+      </div>
+
       <button className="btn primary block" disabled={busy} onClick={run}>{busy ? "Planning…" : `✨ ${t("planGo")}`}</button>
       {err && <div className="banner danger">{err}</div>}
       {res && (
@@ -114,6 +176,14 @@ export function PlanView() {
               ))}
             </div>
           )}
+        </div>
+      )}
+      {spots && (
+        <div className="col" style={{ gap: 10 }}>
+          <h3>🧭 Explore nearby today</h3>
+          {spots.map((x) => <ExploreCard key={x.id} x={x} onGo={() => goTo(x)} />)}
+          {!spots.length && <div className="card muted">No spots of that kind nearby. Try another type.</div>}
+          <div className="tiny muted">Hours can change on holidays and by season. Check before you go.</div>
         </div>
       )}
     </Sheet>
