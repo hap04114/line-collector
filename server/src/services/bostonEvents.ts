@@ -175,10 +175,32 @@ export function fromLocalist(json: any, sourceName: string, now = Date.now()): B
   });
 }
 
+// ---- Boston area ------------------------------------------------------------------------------
+const DOWNTOWN = { lat: 42.3601, lon: -71.0589 };
+const BOSTON_TEXT = /\b(boston|cambridge|somerville|brookline|allston|brighton|medford|malden|quincy|newton|watertown|chelsea|everett|arlington|revere|dorchester|roxbury|jamaica plain|charlestown|seaport|back bay|fenway|kendall|massachusetts|ma\s+0[12]\d{3})\b|,\s*ma\b/i;
+const distKm = (lat: number, lon: number) => {
+  const r = Math.PI / 180, x = Math.sin(((lat - DOWNTOWN.lat) * r) / 2) ** 2 + Math.cos(lat * r) * Math.cos(DOWNTOWN.lat * r) * Math.sin(((lon - DOWNTOWN.lon) * r) / 2) ** 2;
+  return 12742 * Math.asin(Math.sqrt(x));
+};
+/** False when the event is clearly somewhere else: coordinates far away, or an address in another state. */
+export function nearBoston(e: Pick<BostonEvent, "lat" | "lon" | "venue" | "address" | "online">) {
+  if (e.online) return true;
+  if (e.lat != null && e.lon != null) return distKm(e.lat, e.lon) <= 40;
+  const text = `${e.venue ?? ""}, ${e.address ?? ""}`;
+  const state = text.match(/,\s*([A-Z]{2})\s+\d{5}/)?.[1];
+  return !state || state === "MA";
+}
+/** For global calendars: keep only events that positively look like Boston. */
+export function clearlyBoston(e: Pick<BostonEvent, "lat" | "lon" | "venue" | "address" | "online">) {
+  if (e.online) return false;
+  if (e.lat != null && e.lon != null) return distKm(e.lat, e.lon) <= 40;
+  return BOSTON_TEXT.test(`${e.venue ?? ""}, ${e.address ?? ""}`);
+}
+
 // ---- fetching -------------------------------------------------------------------------------
 interface Sources {
   meetup: { urlname: string; name: string }[];
-  luma: { id: string; name: string }[];
+  luma: { id: string; name: string; global?: boolean }[];
   eventbrite: { organizers: { id: string; name: string }[] };
   campus: { id: string; name: string; base: string }[];
 }
@@ -229,7 +251,7 @@ async function refresh(): Promise<Snapshot> {
   const token = process.env.EVENTBRITE_TOKEN;
   const jobs: { source: EventSource; name: string; run: () => Promise<BostonEvent[]> }[] = [
     ...src.meetup.map((g) => ({ source: "meetup" as const, name: g.name, run: async () => fromIcs(await (await get(`https://www.meetup.com/${encodeURIComponent(g.urlname)}/events/ical/`)).text(), "meetup", g.name) })),
-    ...src.luma.map((c) => ({ source: "luma" as const, name: c.name, run: async () => fromIcs(await (await get(`https://api.lu.ma/ics/get?entity=calendar&id=${encodeURIComponent(c.id)}`)).text(), "luma", c.name) })),
+    ...src.luma.map((c) => ({ source: "luma" as const, name: c.name, run: async () => fromIcs(await (await get(`https://api.lu.ma/ics/get?entity=calendar&id=${encodeURIComponent(c.id)}`)).text(), "luma", c.name).filter((e) => (c.global ? clearlyBoston(e) : true)) })),
     ...src.campus.map((c) => ({ source: "campus" as const, name: c.name, run: async () => fromLocalist(await (await get(`${c.base}/api/2/events?days=14&pp=100`)).json(), c.name) })),
     ...(token
       ? src.eventbrite.organizers.map((o) => ({
@@ -254,7 +276,9 @@ async function refresh(): Promise<Snapshot> {
     .filter((e) => { const t = new Date(e.start).getTime(); const end = e.end ? new Date(e.end).getTime() : t + 2 * 3_600_000; return end >= now && t <= horizon; })
     .filter((e) => { const k = `${e.title.toLowerCase()}|${e.start.slice(0, 13)}`; if (seen.has(k)) return false; seen.add(k); return true; })
     .sort((a, b) => a.start.localeCompare(b.start));
-  await geocodeSome(events);
+  events = events.filter(nearBoston);
+  await geocodeSome(events, 40);
+  events = events.filter(nearBoston);
   events.forEach(attachStation);
   return { at: Date.now(), events, sources };
 }
@@ -267,6 +291,7 @@ export async function getBostonEvents(): Promise<Snapshot> {
 
 /** Every word of the query appears somewhere in the event (title, group, venue, tags, description). */
 export function matchesQuery(e: BostonEvent, q: string) {
+  if (/\bfree\s+(food|pizza|lunch|dinner|snacks)\b/i.test(q) && !e.freeFood) return false;
   const hay = `${e.title} ${e.sourceName} ${e.venue ?? ""} ${e.address ?? ""} ${e.tags.join(" ")} ${e.freeFood ? "free food pizza" : ""} ${e.summary ?? ""}`.toLowerCase();
   return q.toLowerCase().split(/\s+/).filter(Boolean).every((w) => hay.includes(w));
 }

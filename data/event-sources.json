@@ -1,26 +1,68 @@
 {
-  "note": "Boston event feeds for $0 Boston. Only official feeds: Meetup group iCal, Luma calendar iCal, the Eventbrite API (needs EVENTBRITE_TOKEN), and university Localist calendars. To add a source, append it here and restart.",
+  "note": "Boston event feeds for $0 Boston. Only official feeds: Meetup group iCal, Luma calendar iCal, the Eventbrite API (needs EVENTBRITE_TOKEN), and university Localist calendars. To add a source, append it here and restart. Mark a calendar \"global\": true when it lists events outside Boston; only Boston-area events are kept from it.",
   "meetup": [
-    { "urlname": "boston-random-acts-of-connection", "name": "Boston Random Acts of Connection" },
-    { "urlname": "boston-hackers", "name": "Boston Hackers" },
-    { "urlname": "boston-generative-ai-meetup", "name": "Boston Generative AI Meetup" },
-    { "urlname": "loungeasiaamericas", "name": "Lounge Asia Americas" },
-    { "urlname": "cambridge-biotech-meetup", "name": "Cambridge Biotech Club" },
-    { "urlname": "global-stoa", "name": "Global Stoa" }
+    {
+      "urlname": "boston-random-acts-of-connection",
+      "name": "Boston Random Acts of Connection"
+    },
+    {
+      "urlname": "boston-hackers",
+      "name": "Boston Hackers"
+    },
+    {
+      "urlname": "boston-generative-ai-meetup",
+      "name": "Boston Generative AI Meetup"
+    },
+    {
+      "urlname": "loungeasiaamericas",
+      "name": "Lounge Asia Americas"
+    },
+    {
+      "urlname": "cambridge-biotech-meetup",
+      "name": "Cambridge Biotech Club"
+    },
+    {
+      "urlname": "global-stoa",
+      "name": "Global Stoa"
+    }
   ],
   "luma": [
-    { "id": "cal-BI22W7AXNavDI82", "name": "Startup Boston" },
-    { "id": "cal-O1hRL5ZGZcE1jcj", "name": "Launch by Lunch" },
-    { "id": "cal-Hn5j7FxO7A7Ensp", "name": "Applied AI in Practice" },
-    { "id": "cal-lUn3MgSrjukuYyt", "name": "MassRobotics" },
-    { "id": "cal-CDoX2WaI5IHD5xs", "name": "Reading Rhythms" }
+    {
+      "id": "cal-BI22W7AXNavDI82",
+      "name": "Startup Boston"
+    },
+    {
+      "id": "cal-O1hRL5ZGZcE1jcj",
+      "name": "Launch by Lunch"
+    },
+    {
+      "id": "cal-Hn5j7FxO7A7Ensp",
+      "name": "Applied AI in Practice"
+    },
+    {
+      "id": "cal-lUn3MgSrjukuYyt",
+      "name": "MassRobotics"
+    },
+    {
+      "id": "cal-CDoX2WaI5IHD5xs",
+      "name": "Reading Rhythms",
+      "global": true
+    }
   ],
   "eventbrite": {
     "note": "Eventbrite removed public event search in 2020. With EVENTBRITE_TOKEN set, we list live events from these organizer IDs (the number at the end of an organizer page URL).",
     "organizers": []
   },
   "campus": [
-    { "id": "mit", "name": "MIT Events", "base": "https://calendar.mit.edu" },
-    { "id": "northeastern", "name": "Northeastern Events", "base": "https://calendar.northeastern.edu" }
+    {
+      "id": "mit",
+      "name": "MIT Events",
+      "base": "https://calendar.mit.edu"
+    },
+    {
+      "id": "northeastern",
+      "name": "Northeastern Events",
+      "base": "https://calendar.northeastern.edu"
+    }
   ]
 }

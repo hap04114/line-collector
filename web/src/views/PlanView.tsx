@@ -4,32 +4,58 @@ import { useI18n } from "../i18n";
 import { useStore } from "../store";
 import { Sheet } from "../components/Sheet";
 
-const EXAMPLES = [
-  "$10, two hours, spicy food, then somewhere quiet to study",
-  "Cheap noodles open late, then a library",
-  "Something sweet under $8 near me",
-  "$12 taste of home, and is rent cheap around there?",
+// The planner reads plain text ("$10, two hours, spicy food, then somewhere quiet to study"),
+// so these controls write that sentence for the student instead of making them type it.
+const FOODS: { id: string; label: string; words: string }[] = [
+  { id: "", label: "✨ Anything", words: "" },
+  { id: "spicy", label: "🌶️ Spicy", words: "spicy food" },
+  { id: "noodles", label: "🍜 Noodles", words: "noodles" },
+  { id: "pizza", label: "🍕 Pizza", words: "pizza" },
+  { id: "sandwich", label: "🥪 Sandwich", words: "sandwich" },
+  { id: "burger", label: "🍔 Burgers", words: "burgers" },
+  { id: "coffee", label: "☕ Coffee", words: "coffee" },
+  { id: "sweet", label: "🍩 Sweet", words: "something sweet" },
+  { id: "home", label: "🏡 Taste of home", words: "taste of home" },
+  { id: "halal", label: "Halal", words: "halal food" },
+  { id: "vegetarian", label: "Vegetarian", words: "vegetarian food" },
+  { id: "vegan", label: "Vegan", words: "vegan food" },
 ];
 
-const TOOL_ICON: Record<string, string> = { understand: "🧠", remember: "💾", propose: "📍", check: "✅", study: "📚", write: "✍️", nearestStations: "📍", lineAlerts: "🚦", findFood: "🍜", findStudySpots: "📚", rentSnapshot: "🏠", weatherNow: "🌡️" };
+const NEXT: { id: "study" | "late" | "rent"; label: string; words: string }[] = [
+  { id: "study", label: "📚 Quiet study spot", words: "then somewhere quiet to study" },
+  { id: "late", label: "🌙 Open late", words: "open late" },
+  { id: "rent", label: "🏠 Rent check", words: "and is rent cheap around there?" },
+];
+
+const HOURS = [1, 2, 3];
+
+export function buildPlanQuery(o: { budget: number; hours: number; food: string; next: string[] }) {
+  const food = FOODS.find((f) => f.id === o.food)?.words;
+  return [
+    `$${o.budget}`,
+    `${o.hours} hour${o.hours > 1 ? "s" : ""}`,
+    food,
+    ...NEXT.filter((n) => o.next.includes(n.id)).map((n) => n.words),
+  ].filter(Boolean).join(", ");
+}
 
 export function PlanView() {
   const s = useStore();
   const { t } = useI18n();
-  const [q, setQ] = useState("");
+  const [budget, setBudget] = useState(() => Math.min(30, Math.max(5, Math.round((s.me?.user?.budgetCents ?? 1000) / 100))));
+  const [hours, setHours] = useState(2);
+  const [food, setFood] = useState("");
+  const [next, setNext] = useState<string[]>(["study"]);
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [open, setOpen] = useState<number | null>(null);
 
-  const run = async (query = q) => {
-    if (!query.trim()) return;
-    setQ(query);
+  const run = async () => {
     setBusy(true);
     setErr(null);
     setRes(null);
     try {
-      setRes(await api.get(`/plan?${qs({ q: query, lat: s.pos?.lat, lon: s.pos?.lon })}`));
+      setRes(await api.get(`/plan?${qs({ q: buildPlanQuery({ budget, hours, food, next }), lat: s.pos?.lat, lon: s.pos?.lon })}`));
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -41,45 +67,54 @@ export function PlanView() {
     s.openStation(stationId);
     if (st) s.flyTo(st.lat, st.lon, 15.5);
   };
+  const toggleNext = (id: string) => setNext((o) => (o.includes(id) ? o.filter((x) => x !== id) : [...o, id]));
 
   return (
-    <Sheet title={`✨ ${t("planTitle")}`} sub="Mastra workflow · Gemini · live MBTA · your history" onClose={() => s.setPanel(null)} full>
+    <Sheet title={`✨ ${t("planTitle")}`} sub="Pick your budget and what you're after. We'll plan the stop." onClose={() => s.setPanel(null)} full>
       <div className="field">
-        <label htmlFor="pq">{t("planHint")}</label>
-        <textarea id="pq" className="input" style={{ minHeight: 80 }} value={q} onChange={(e) => setQ(e.target.value)} placeholder={EXAMPLES[0]} />
+        <div className="row between">
+          <label htmlFor="plan-budget">Budget</label>
+          <b style={{ fontSize: 22, color: "var(--accent)" }}>${budget}</b>
+        </div>
+        <input id="plan-budget" type="range" min={5} max={30} step={1} value={budget} onChange={(e) => setBudget(+e.target.value)}
+          style={{ width: "100%", accentColor: "var(--accent)", height: 28 }} aria-valuetext={`$${budget}`} />
+        <div className="row between tiny muted"><span>$5</span><span>$30</span></div>
       </div>
-      <div className="chips">
-        {EXAMPLES.map((e) => <button key={e} className="chip" onClick={() => run(e)}>{e}</button>)}
+
+      <div className="field">
+        <label>How long do you have?</label>
+        <div className="seg">
+          {HOURS.map((h) => <button key={h} className={hours === h ? "on" : ""} onClick={() => setHours(h)}>{h} hr{h > 1 ? "s" : ""}</button>)}
+        </div>
       </div>
-      <button className="btn primary block" disabled={busy || !q.trim()} onClick={() => run()}>{busy ? "Planning…" : `✨ ${t("planGo")}`}</button>
+
+      <div className="field">
+        <label>What do you feel like eating?</label>
+        <div className="chips" style={{ flexWrap: "wrap" }}>
+          {FOODS.map((f) => <button key={f.id} className={`chip ${food === f.id ? "on" : ""}`} onClick={() => setFood(f.id)}>{f.label}</button>)}
+        </div>
+      </div>
+
+      <div className="field">
+        <label>Where next? <span className="muted">(pick any)</span></label>
+        <div className="chips" style={{ flexWrap: "wrap" }}>
+          {NEXT.map((n) => <button key={n.id} className={`chip ${next.includes(n.id) ? "on" : ""}`} onClick={() => toggleNext(n.id)}>{n.label}</button>)}
+        </div>
+      </div>
+
+      <button className="btn primary block" disabled={busy} onClick={run}>{busy ? "Planning…" : `✨ ${t("planGo")}`}</button>
       {err && <div className="banner danger">{err}</div>}
       {res && (
-        <>
-          <div className="card hero">
-            <div className="tiny muted" style={{ marginBottom: 6 }}>{res.engine}</div>
-            <div style={{ whiteSpace: "pre-wrap", fontSize: 16 }}>{res.text || "No plan returned."}</div>
-            {res.stops.length > 0 && (
-              <div className="row wrap" style={{ marginTop: 10 }}>
-                {res.stops.map((x: any) => (
-                  <button key={x.role} className="btn sm" onClick={() => show(x.stationId)}>{x.role === "eat" ? "🍜" : "📚"} {x.spot?.name} · {x.name}</button>
-                ))}
-              </div>
-            )}
-          </div>
-          <h3>🛠️ Workflow steps ({res.steps.length})</h3>
-          <div className="steps">
-            {res.steps.map((st: any, i: number) => (
-              <div key={i} className="step" onClick={() => setOpen(open === i ? null : i)} role="button">
-                <div className="row between">
-                  <b>{i + 1}. {TOOL_ICON[st.tool] ?? "🔧"} {st.tool}</b>
-                  <span className="tiny muted">{st.ms} ms · {Array.isArray(st.output) ? `${st.output.length} results` : "result"}</span>
-                </div>
-                <div className="tiny muted mono">{JSON.stringify(st.input)}</div>
-                {open === i && <pre>{JSON.stringify(st.output, null, 2)}</pre>}
-              </div>
-            ))}
-          </div>
-        </>
+        <div className="card hero">
+          <div style={{ whiteSpace: "pre-wrap", fontSize: 16 }}>{res.text || "No plan returned."}</div>
+          {res.stops.length > 0 && (
+            <div className="row wrap" style={{ marginTop: 10 }}>
+              {res.stops.map((x: any) => (
+                <button key={x.role} className="btn sm" onClick={() => show(x.stationId)}>{x.role === "eat" ? "🍜" : "📚"} {x.spot?.name} · {x.name}</button>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </Sheet>
   );

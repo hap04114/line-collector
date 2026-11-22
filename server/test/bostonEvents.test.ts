@@ -163,3 +163,25 @@ describe("feed search", () => {
     expect(matchesQuery(ev, "pottery")).toBe(false);
   });
 });
+
+import { clearlyBoston, nearBoston } from "../src/services/bostonEvents.js";
+
+describe("Boston area filter", () => {
+  const base = { lat: null, lon: null, venue: null, address: null, online: false };
+  it("drops events in other states or far away", () => {
+    expect(nearBoston({ ...base, venue: "Autodidact Beer", address: "1745 NJ-10 Ste 6, Morris Plains, NJ 07950, USA" })).toBe(false);
+    expect(nearBoston({ ...base, lat: 38.93, lon: -77.03 })).toBe(false);
+    expect(nearBoston({ ...base, address: "360 Huntington Ave, Boston, MA 02115" })).toBe(true);
+    expect(nearBoston({ ...base, venue: "CIC", address: "50 Milk St" })).toBe(true); // no state named: keep
+  });
+  it("global calendars must clearly be in Boston", () => {
+    expect(clearlyBoston({ ...base, venue: "Trident Booksellers", address: "338 Newbury St, Boston, MA" })).toBe(true);
+    expect(clearlyBoston({ ...base, venue: "Some bar", address: "12 Main St" })).toBe(false);
+    expect(clearlyBoston({ ...base, lat: 42.37, lon: -71.11 })).toBe(true);
+  });
+  it('"free food" search only returns events with food', () => {
+    const [ev] = fromIcs(ICS, "meetup", "Boston Hackers");
+    expect(matchesQuery({ ...ev, freeFood: false, title: "Free English class" }, "free food")).toBe(false);
+    expect(matchesQuery(ev, "free food")).toBe(true);
+  });
+});
