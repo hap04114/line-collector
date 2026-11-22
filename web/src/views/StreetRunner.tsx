@@ -14,6 +14,7 @@ import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { TilesRenderer } from "3d-tiles-renderer";
 import { GoogleCloudAuthPlugin, GLTFExtensionsPlugin, TilesFadePlugin } from "3d-tiles-renderer/plugins";
+import { giveOwnCaches } from "../components/PhotorealLayer";
 import { api } from "../api";
 import { LinePill, useStore } from "../store";
 
@@ -720,7 +721,9 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       scene.background = new THREE.Color(0xb9d2ea);
       scene.fog = new THREE.Fog(0xd9e0e6, 650, 3000);
       tiles = new TilesRenderer();
+      giveOwnCaches(tiles); // never share a full cache with the main map's city
       tiles.registerPlugin(new GoogleCloudAuthPlugin({ apiToken: tilesKey!, autoRefreshToken: true, useRecommendedSettings: false }));
+      tiles.addEventListener("load-error", (e: any) => console.warn("[street-runner] tile load error", e?.error?.message ?? e?.url ?? e));
       // lower error target = more detailed tiles (Google's recommended 20 is built to save data)
       tiles.errorTarget = touchScreen ? 10 : 6;
       // crisp streets at a low viewing angle: full anisotropic filtering on every tile texture
