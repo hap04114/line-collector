@@ -13,7 +13,54 @@ import { api } from "../api";
 import { useQuest, useQuests, useStore } from "../store";
 import { GameLayer3D } from "./GameLayer3D";
 
-const STYLES = { night: "https://tiles.openfreemap.org/styles/dark", day: "https://tiles.openfreemap.org/styles/liberty" };
+const STYLES = { real: "https://tiles.openfreemap.org/styles/liberty", day: "https://tiles.openfreemap.org/styles/liberty", night: "https://tiles.openfreemap.org/styles/dark" };
+type Theme = keyof typeof STYLES;
+
+/** Realistic look on top of the liberty style: real building materials, asphalt streets with lane paint,
+ *  concrete sidewalks, real greens and water, a hazy sky at the horizon and sunlight that shades the buildings. */
+function applyRealistic(map: MLMap) {
+  for (const l of map.getStyle().layers) {
+    try {
+      if (l.type === "line" && /^(road|bridge|tunnel)_/.test(l.id) && !/rail|hatching/.test(l.id)) {
+        map.setPaintProperty(l.id, "line-color", /casing/.test(l.id) ? "#bcb6ab" : /path|pedestrian/.test(l.id) ? "#d8d2c6" : /^tunnel/.test(l.id) ? "#6b6d72" : "#4a4c51");
+      } else if (l.id === "background") map.setPaintProperty(l.id, "background-color", "#dcd7cd");
+      else if (l.type === "fill" && /park|grass|wood|pitch|cemetery|golf/.test(l.id)) map.setPaintProperty(l.id, "fill-color", "#7aa15a");
+      else if (l.type === "fill" && /water/.test(l.id)) map.setPaintProperty(l.id, "fill-color", "#5a8bb0");
+      else if (l.type === "line" && /^waterway/.test(l.id)) map.setPaintProperty(l.id, "line-color", "#5a8bb0");
+      else if (l.type === "fill" && /^landuse_/.test(l.id)) map.setPaintProperty(l.id, "fill-color", "#d3cdc2");
+      else if (l.id === "building") map.setPaintProperty(l.id, "fill-color", "#c3b8aa");
+      else if (l.id === "road_area_pattern") map.setLayoutProperty(l.id, "visibility", "none");
+    } catch { /* layer without that property */ }
+  }
+  if (map.getLayer("building-3d")) {
+    // Boston brick and brownstone low-rise, limestone and concrete mid-rise, glass towers;
+    // a real building colour from OpenStreetMap wins when it's tagged
+    const h = ["coalesce", ["get", "render_height"], 8];
+    const pick = ["%", ["floor", ["+", ["*", h, 3.7], ["*", ["coalesce", ["get", "render_min_height"], 0], 1.3]]], 4];
+    map.setPaintProperty("building-3d", "fill-extrusion-color", [
+      "case",
+      ["has", "colour"], ["to-color", ["get", "colour"], "#b9ab98"],
+      [">", h, 45], ["match", pick, 0, "#8193a6", 1, "#8c9db0", 2, "#71849a", "#97a8ba"],
+      [">", h, 16], ["match", pick, 0, "#cfc3ae", 1, "#c0b4a1", 2, "#aaa398", "#957660"],
+      ["match", pick, 0, "#a5614a", 1, "#b06d53", 2, "#935543", "#bc8a6b"],
+    ] as any);
+    map.setPaintProperty("building-3d", "fill-extrusion-opacity", 1);
+    map.setPaintProperty("building-3d", "fill-extrusion-vertical-gradient", true);
+  }
+  if (!map.getLayer("lc-lanes")) {
+    map.addLayer({
+      id: "lc-lanes", type: "line", source: "openmaptiles", "source-layer": "transportation", minzoom: 16,
+      filter: ["all", ["in", ["get", "class"], ["literal", ["primary", "secondary", "tertiary", "trunk"]]], ["!=", ["get", "brunnel"], "tunnel"]],
+      paint: { "line-color": "#f2efe6", "line-width": ["interpolate", ["exponential", 2], ["zoom"], 16, 0.5, 20, 2.4], "line-dasharray": [4, 6], "line-opacity": 0.75 },
+    } as any, map.getLayer("building") ? "building" : undefined);
+  }
+  try {
+    (map as any).setSky({ "sky-color": "#79aee0", "horizon-color": "#eaddc7", "fog-color": "#e6dccb", "sky-horizon-blend": 0.55, "horizon-fog-blend": 0.65, "fog-ground-blend": 0.8, "atmosphere-blend": 0.7 });
+  } catch { /* older style spec */ }
+  try {
+    map.setLight({ anchor: "map", color: "#fff3e0", intensity: 0.42, position: [1.5, 210, 40] } as any);
+  } catch { /* ignore */ }
+}
 const FONT = ["Noto Sans Regular"];
 
 type Pins = { id: string; name: string; lat: number; lon: number; partner: boolean; kind: string }[];
@@ -35,11 +82,13 @@ export function MapView() {
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const [loaded, setLoaded] = useState(0); // bumps on every style load
-  const [theme, setTheme] = useState<"night" | "day">(() => {
+  // v2: Realistic is the default now; an older saved "Illustrated" choice shouldn't hide it
+  const [theme, setTheme] = useState<Theme>(() => {
     try {
-      return (localStorage.getItem("lc-theme") as "night" | "day") || "day";
+      const t = localStorage.getItem("lc-theme-v2") as Theme | null;
+      return t && t in STYLES ? t : "real";
     } catch {
-      return "day";
+      return "real";
     }
   });
   const trains = useRef(new Map<string, { from: [number, number]; to: [number, number]; t0: number; color: string; route: string; label: string; bearing: number }>());
@@ -116,9 +165,10 @@ export function MapView() {
       firstTheme.current = false;
       return;
     }
-    mapRef.current?.setStyle(STYLES[theme]);
+    // a full reload (no diff): Realistic and Illustrated share a base style but paint it differently
+    mapRef.current?.setStyle(STYLES[theme], { diff: false });
     try {
-      localStorage.setItem("lc-theme", theme);
+      localStorage.setItem("lc-theme-v2", theme);
     } catch {
       /* ignore */
     }
@@ -129,9 +179,10 @@ export function MapView() {
     const map = mapRef.current;
     if (!map || !loaded || !s.statics || map.getSource("lc-lines")) return;
     const firstSymbol = map.getStyle().layers.find((l) => l.type === "symbol")?.id;
-    // real 3D buildings from neighborhood zoom, shaded by height (illustrated style)
-    if (map.getLayer("building-3d")) {
-      map.setLayerZoomRange("building-3d", 13, 24);
+    // real 3D buildings from neighborhood zoom: realistic materials, or shaded by height (illustrated style)
+    if (map.getLayer("building-3d")) map.setLayerZoomRange("building-3d", 13, 24);
+    if (theme === "real") applyRealistic(map);
+    else if (map.getLayer("building-3d")) {
       map.setPaintProperty("building-3d", "fill-extrusion-color", ["interpolate", ["linear"], ["coalesce", ["get", "render_height"], 8], 0, "#ece6dc", 20, "#ddd6ca", 60, "#c9cfd9", 150, "#aab6c8"]);
       map.setPaintProperty("building-3d", "fill-extrusion-opacity", 0.92);
     }
@@ -154,7 +205,7 @@ export function MapView() {
       {
         id: "lc-campus-tint", type: "fill", source: "openmaptiles", "source-layer": "landuse",
         filter: ["in", ["get", "class"], ["literal", ["university", "college"]]],
-        paint: { "fill-color": "#c6ff3d", "fill-opacity": theme === "night" ? 0.1 : 0.16 },
+        paint: { "fill-color": "#c6ff3d", "fill-opacity": theme === "night" ? 0.1 : theme === "real" ? 0.07 : 0.16 },
       },
       firstSymbol,
     );
@@ -405,8 +456,9 @@ export function MapView() {
               <button className={!layers.is3d ? "on" : ""} onClick={() => setLayers({ ...layers, is3d: false })}>2D</button>
             </div>
             <div className="seg" style={{ padding: 3 }}>
-              <button className={theme === "day" ? "on" : ""} onClick={() => setTheme("day")}>Illustrated</button>
-              <button className={theme === "night" ? "on" : ""} onClick={() => setTheme("night")}>Night</button>
+              {([["real", "Realistic"], ["day", "Illustrated"], ["night", "Night"]] as const).map(([k, label]) => (
+                <button key={k} className={theme === k ? "on" : ""} onClick={() => setTheme(k)}>{label}</button>
+              ))}
             </div>
             {([["trains", "Live trains"], ["campuses", "Campuses"], ["quests", "Quests"], ["delays", "Color lines by delay"]] as const).map(([k, label]) => (
               <label key={k} className="check"><input type="checkbox" checked={layers[k]} onChange={(e) => setLayers({ ...layers, [k]: e.target.checked })} /><span>{label}</span></label>
