@@ -11,6 +11,7 @@ import { MercatorCoordinate, type CustomLayerInterface, type Map as MLMap } from
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { TilesRenderer } from "3d-tiles-renderer";
 import { GoogleCloudAuthPlugin, GLTFExtensionsPlugin, TilesFadePlugin } from "3d-tiles-renderer/plugins";
 import { api } from "../api";
@@ -21,7 +22,7 @@ const M_LAT = 110540;
 const mLon = (lat: number) => 111320 * Math.cos((lat * Math.PI) / 180);
 
 interface Path { pts: [number, number][]; cum: number[]; len: number }
-type Kind = "barrier" | "cone" | "bus" | "train" | "token" | "shield";
+type Kind = "barrier" | "cone" | "bus" | "train" | "token" | "shield" | "gate";
 
 /** Real Boston landmarks; a big sign appears beside the run when the route passes near one. */
 const LANDMARKS: [string, number, number][] = [
@@ -49,6 +50,14 @@ function trainTexture(color: string) {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 interface Thing { s: number; lane: number; kind: Kind; alive: boolean; mesh: THREE.Object3D; len: number; h: number; v?: number }
+
+/** A LOW BRIDGE sign on two posts: you roll under it (2.6 tall, centred on its middle like the other pieces). */
+function gateGeometry() {
+  const postL = new THREE.BoxGeometry(0.18, 2.6, 0.18); postL.translate(-1.15, 0, 0);
+  const postR = new THREE.BoxGeometry(0.18, 2.6, 0.18); postR.translate(1.15, 0, 0);
+  const bar = new THREE.BoxGeometry(2.5, 0.75, 0.2); bar.translate(0, 0.9, 0);
+  return mergeGeometries([postL, postR, bar], true)!;
+}
 
 const canvasTex = (c: HTMLCanvasElement) => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
 
@@ -201,7 +210,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
   const el = useRef<HTMLDivElement>(null);
   const mini = useRef<HTMLCanvasElement>(null);
   const touchScreen = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
-  const controls = useRef({ left: () => {}, right: () => {}, jump: () => {}, bike: () => {} });
+  const controls = useRef({ left: () => {}, right: () => {}, jump: () => {}, bike: () => {}, roll: () => {} });
   const cr = s.statics?.commuter;
   const route = s.routeById.get(line) ?? cr?.routes.find((r) => r.id === line);
 
@@ -224,8 +233,13 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
     const linePos = (r: number) => { const u = startS + r, k = Math.floor(u / L), w = u - k * L; return k % 2 === 0 ? { p: w, dir: 1 } : { p: L - w, dir: -1 }; };
 
     const start = at(path, startS);
+    // Photoreal: Google's photorealistic 3D Tiles of real Boston, drawn by three.js on its own canvas over the map
+    const photo = look === "photo" && !!tilesKey;
     const map = new maplibregl.Map({
       container: el.current,
+      // smoothness: no 3x retina rendering on phones; in Photoreal the map is hidden, so 1x is plenty
+      pixelRatio: photo ? 1 : Math.min(window.devicePixelRatio, touchScreen ? 1.5 : 2),
+      fadeDuration: 0,
       style: "https://tiles.openfreemap.org/styles/liberty",
       center: [start.lon, start.lat],
       zoom: 19.3,
@@ -245,8 +259,6 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
     const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(0.3, 1, 0.4); scene.add(sun);
     const schoolColor = new THREE.Color(s.me?.user?.school?.color ?? "#c6ff3d");
     const lineColor = new THREE.Color(route.color);
-    // Photoreal: Google's photorealistic 3D Tiles of real Boston, drawn by three.js on its own canvas over the map
-    const photo = look === "photo" && !!tilesKey;
     const SCALE = photo ? 1.25 : 3.2; // game pieces are drawn larger than life so they read at street-level zoom
 
     // ---- the runner: a big cartoon student with a real run cycle, and a blue bike power-up ----
@@ -321,46 +333,67 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
 
     const bubble = new THREE.Mesh(new THREE.SphereGeometry(1.65, 24, 16), new THREE.MeshBasicMaterial({ color: 0x7ad7ff, transparent: true, opacity: 0.25, depthWrite: false }));
     bubble.position.y = 1.3; bubble.visible = false;
-    runner.add(rig, bike, bubble);
+    // roll pivot: the body spins around its middle for a Subway Surfers-style roll; the feet stay the scaling origin
+    const PIV = 1.3;
+    const rollPivot = new THREE.Group(); rollPivot.position.y = PIV;
+    const rollInner = new THREE.Group(); rollInner.position.y = -PIV;
+    rollPivot.add(rollInner); rollInner.add(rig);
+    runner.add(rollPivot, bike, bubble);
     runner.scale.setScalar(RSCALE);
     scene.add(runner);
     // soft round shadow on the street that shrinks while you're in the air
     const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.75, 28), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false }));
     shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.08;
     scene.add(shadow);
+    // jump feel (Subway Surfers-like): seconds for a roll, the landing squash and the landing dust ring
+    const ROLL_T = 0.62, LAND_T = 0.2, DUST_T = 0.4, JUMP_V = 11.5;
+    const dust = new THREE.Mesh(new THREE.RingGeometry(0.45, 0.8, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }));
+    dust.rotation.x = -Math.PI / 2; dust.visible = false;
+    scene.add(dust);
+    let dustT = 0;
 
     // Real look: a motion-captured human (Mixamo "Michelle", animated with the Run / Idle / Walk clips that ship
     // with the three.js "Soldier" example; both use the same Mixamo skeleton). The cartoon rig is the fallback.
     const human = new THREE.Group();
     human.scale.setScalar(1.6);
-    runner.add(human);
+    rollInner.add(human);
     let mixer: THREE.AnimationMixer | null = null;
-    let retarget: Map<string, THREE.Quaternion> | null = null;
-    let personRoot: THREE.Object3D | null = null, sourceRoot: THREE.Object3D | null = null;
-    // rotation of every node relative to its model root
-    const modelQuats = (root: THREE.Object3D) => {
-      const out = new Map<string, THREE.Quaternion>();
-      const walk = (o: THREE.Object3D, acc: THREE.Quaternion) => {
-        const q = acc.clone().multiply(o.quaternion);
-        out.set(o.name, q);
-        for (const c of o.children) walk(c, q);
+    // ---- motion retargeting with no per-frame allocations (no garbage-collection hitches) ----
+    type RNode = { o: THREE.Object3D; parent: number; q: THREE.Quaternion; src: number; corr: THREE.Quaternion | null; pose: number; ex: number };
+    const IDQ = new THREE.Quaternion(), tmpQ = new THREE.Quaternion();
+    const flatten = (root: THREE.Object3D) => {
+      const list: RNode[] = [];
+      const walk = (o: THREE.Object3D, parent: number) => {
+        const i = list.length;
+        list.push({ o, parent, q: new THREE.Quaternion(), src: -1, corr: null, pose: -1, ex: -1 });
+        for (const c of o.children) walk(c, i);
       };
-      for (const c of root.children) walk(c, new THREE.Quaternion());
-      return out;
+      for (const c of root.children) walk(c, -1);
+      return list;
     };
-    const applyRetarget = () => {
-      if (!retarget || !personRoot || !sourceRoot) return;
-      const now = modelQuats(sourceRoot);
-      const walk = (o: THREE.Object3D, acc: THREE.Quaternion) => {
-        const corr = retarget!.get(o.name), src = now.get(o.name);
-        let q: THREE.Quaternion;
-        if (corr && src) {
-          q = FLIP.clone().multiply(src).multiply(corr); // wanted rotation in model space
-          o.quaternion.copy(acc.clone().invert().multiply(q)); // back to the bone's local space
-        } else q = acc.clone().multiply(o.quaternion);
-        for (const c of o.children) walk(c, q);
-      };
-      for (const c of personRoot.children) walk(c, new THREE.Quaternion());
+    // rotation of every node relative to its model root (parents come before children in the list)
+    const modelPass = (list: RNode[]) => { for (const n of list) n.q.multiplyQuaternions(n.parent < 0 ? IDQ : list[n.parent].q, n.o.quaternion); };
+    let tgtNodes: RNode[] = [], srcNodes: RNode[] = [];
+    // the jump tuck and the roll ball, as model-space turns on a few bones (+z is forward, +x is her left)
+    const qx = (a: number) => new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), a);
+    const qz = (a: number) => new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), a);
+    const POSE_BONES = ["mixamorigLeftUpLeg", "mixamorigRightUpLeg", "mixamorigLeftLeg", "mixamorigRightLeg", "mixamorigLeftArm", "mixamorigRightArm", "mixamorigSpine"];
+    const JUMP_POSE = [qx(-1.45), qx(-0.85), qx(1.1), qx(0.7), qz(-0.35).multiply(qx(-1.9)), qz(0.35).multiply(qx(-1.7)), qx(0.2)];
+    const ROLL_POSE = [qx(-2.1), qx(-2.1), qx(1.35), qx(1.35), qx(-1.35), qx(-1.35), qx(0.75)];
+    const poseQ = POSE_BONES.map(() => new THREE.Quaternion());
+    const applyRetarget = (wJ: number, wR: number) => {
+      if (!tgtNodes.length) return;
+      modelPass(srcNodes);
+      for (let i = 0; i < poseQ.length; i++) poseQ[i].copy(IDQ).slerp(JUMP_POSE[i], wJ).slerp(ROLL_POSE[i], wR);
+      for (const n of tgtNodes) {
+        const parentQ = n.parent < 0 ? IDQ : tgtNodes[n.parent].q;
+        n.ex = n.pose >= 0 ? n.pose : n.parent < 0 ? -1 : tgtNodes[n.parent].ex; // a posed bone's turn carries down its limb
+        if (n.src >= 0 && n.corr) {
+          n.q.copy(FLIP).multiply(srcNodes[n.src].q).multiply(n.corr); // wanted rotation in model space
+          if (n.ex >= 0) n.q.premultiply(poseQ[n.ex]);
+          n.o.quaternion.multiplyQuaternions(tmpQ.copy(parentQ).invert(), n.q); // back to the bone's local space
+        } else n.q.multiplyQuaternions(parentQ, n.o.quaternion);
+      }
     };
     const FLIP = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI), FLIP_INV = FLIP.clone().invert();
     const acts: Record<string, THREE.AnimationAction> = {};
@@ -375,19 +408,20 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
           human.add(person.scene);
           // the soldier is never drawn: it only plays the clips, and each frame its bones' rotation change from
           // its rest pose is applied on top of Michelle's own rest pose (the two rigs' bone axes differ)
-          const restT = modelQuats(person.scene);
+          tgtNodes = flatten(person.scene);
+          modelPass(tgtNodes); // Michelle's rest pose
           // the soldier's file pose isn't a T-pose; its "TPose" clip is, so measure its rest from that clip
           const tpose = moves.animations.find((a) => a.name === "TPose");
           if (tpose) { const m0 = new THREE.AnimationMixer(moves.scene); m0.clipAction(tpose).play(); m0.update(0); }
-          const restS = modelQuats(moves.scene);
-          retarget = new Map();
-          for (const [name, tq] of restT) {
-            const sq = restS.get(name);
+          srcNodes = flatten(moves.scene);
+          modelPass(srcNodes);
+          const srcByName = new Map(srcNodes.map((n, i) => [n.o.name, i] as const));
+          for (const n of tgtNodes) {
+            const j = srcByName.get(n.o.name);
             // the two models face opposite ways, so turn each motion half a turn before applying it
-            if (name.startsWith("mixamorig") && sq) retarget.set(name, sq.clone().invert().multiply(FLIP_INV).multiply(tq));
+            if (j !== undefined && n.o.name.startsWith("mixamorig")) { n.src = j; n.corr = srcNodes[j].q.clone().invert().multiply(FLIP_INV).multiply(n.q); }
+            n.pose = POSE_BONES.indexOf(n.o.name);
           }
-          personRoot = person.scene;
-          sourceRoot = moves.scene;
           mixer = new THREE.AnimationMixer(moves.scene);
           for (const clip of moves.animations) acts[clip.name] = mixer.clipAction(clip);
           rig.visible = false;
@@ -405,7 +439,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
     };
     let lastRender = performance.now();
 
-    const geo = { barrier: new THREE.BoxGeometry(2.4, 1, 0.4), cone: new THREE.ConeGeometry(0.5, 1.1, 14), bus: new THREE.BoxGeometry(2.4, 3, 9), train: new THREE.BoxGeometry(2.8, 3.4, 22), token: new THREE.CylinderGeometry(0.5, 0.5, 0.12, 24), shield: new THREE.SphereGeometry(0.5, 16, 12) };
+    const geo = { barrier: new THREE.BoxGeometry(2.4, 1, 0.4), cone: new THREE.ConeGeometry(0.5, 1.1, 14), bus: new THREE.BoxGeometry(2.4, 3, 9), train: new THREE.BoxGeometry(2.8, 3.4, 22), token: new THREE.CylinderGeometry(0.5, 0.5, 0.12, 24), shield: new THREE.SphereGeometry(0.5, 16, 12), gate: gateGeometry() };
     geo.token.rotateX(Math.PI / 2);
     for (const g of Object.values(geo)) g.translate(0, 0, 0);
     const mats = {
@@ -421,6 +455,12 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       })(),
       token: new THREE.MeshStandardMaterial({ color: 0xffd84a, emissive: 0xc79100, emissiveIntensity: 0.9, metalness: 0.6, roughness: 0.25 }),
       shield: new THREE.MeshStandardMaterial({ color: 0x7ad7ff, emissive: 0x1a5070 }),
+      // posts, posts, sign (Boston's famous low bridges: don't get "Storrowed")
+      gate: (() => {
+        const post = new THREE.MeshStandardMaterial({ color: 0x5b6470, metalness: 0.6, roughness: 0.35 });
+        const sign = new THREE.MeshStandardMaterial({ map: label("⚠ LOW BRIDGE", "#ffcc00", "#111111"), roughness: 0.5 });
+        return [post, post, sign];
+      })(),
     };
     // headlight glow and the light they throw on the track, added to every train (box is 2.8 × 3.4 × 22, +z faces you)
     const glowMat = new THREE.MeshBasicMaterial({ color: 0xfff1b8, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending });
@@ -451,10 +491,12 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       marks.push({ s: pr.s, side, mesh: m, name, shown: false });
     }
 
-    const state = { run: 0, lane: 1, x: 0, y: 0, vy: 0, speed: 18, tokens: 0, stations: 0, shield: 0, bike: 0, bikeCd: 0, over: false, nextSpawn: 150, t0: performance.now(), bearing: 0 };
+    const state = { run: 0, lane: 1, x: 0, y: 0, vy: 0, speed: 18, tokens: 0, stations: 0, shield: 0, bike: 0, bikeCd: 0, roll: 0, jumpBuf: 0, landT: 0, slam: false, over: false, nextSpawn: 150, t0: performance.now(), bearing: 0 };
     let mapReady = false;
     let started = autoStart.current;
     let goAt = Infinity; // 3-2-1 countdown ends here
+    let gateHinted = false;
+    const doJump = () => { state.vy = JUMP_V; state.roll = 0; state.jumpBuf = 0; state.slam = false; };
     // fairness: an oncoming train sweeps back over rows already placed, so it may only use a lane that no
     // upcoming row leaves free, and new rows keep their free lane off any lane an oncoming train is in
     const rows: { s: number; free: number }[] = [];
@@ -468,7 +510,8 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       for (let lane = 0; lane < 3; lane++) {
         if (lane === free) continue;
         const q = Math.random();
-        const kind: Kind | null = q < 0.2 ? "train" : q < 0.32 ? "bus" : q < 0.6 ? "barrier" : q < 0.72 ? "cone" : null;
+        // low DELAY barriers you jump; LOW BRIDGE signs you roll under (from 300 m, once you've warmed up)
+        const kind: Kind | null = q < 0.2 ? "train" : q < 0.32 ? "bus" : q < 0.48 ? "barrier" : q < 0.62 ? (state.run > 300 ? "gate" : "barrier") : q < 0.72 ? "cone" : null;
         if (!kind) continue;
         const mesh = new THREE.Mesh(geo[kind], mats[kind]); mesh.scale.setScalar(SCALE); scene.add(mesh);
         // some trains are coming at you, headlights on
@@ -478,7 +521,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
           const laneIsSomeonesExit = rows.some((rw) => rw.s > state.run - 5 && rw.free === lane);
           if (Math.random() < 0.45 && state.run > 150 && !laneIsSomeonesExit) v = 9;
         }
-        things.push({ s: r + (v ? 60 : 0), lane, kind, alive: true, mesh, v, len: kind === "train" ? 22 : kind === "bus" ? 9 : 0.8, h: kind === "barrier" ? 1 : kind === "cone" ? 1.1 : kind === "train" ? 3.4 : 3 });
+        things.push({ s: r + (v ? 60 : 0), lane, kind, alive: true, mesh, v, len: kind === "train" ? 22 : kind === "bus" ? 9 : 0.8, h: kind === "barrier" ? 1 : kind === "cone" ? 1.1 : kind === "train" ? 3.4 : kind === "gate" ? 2.6 : 3 });
       }
       const extra: Kind = Math.random() < 0.06 && state.run > 400 ? "shield" : "token";
       for (let i = 0; i < (extra === "token" ? 6 : 1); i++) {
@@ -511,29 +554,52 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
         const origin = MercatorCoordinate.fromLngLat([me.lon, me.lat], 0);
         const unit = origin.meterInMercatorCoordinateUnits();
         const local = (lon: number, lat: number) => ({ x: (lon - me.lon) * mLon(lat), z: -(lat - me.lat) * M_LAT });
-        const yaw = -Math.atan2(me.e, me.n);
-        runner.position.set(0, state.y, 0);
-        runner.rotation.y = yaw + Math.PI;
+        const visY = state.y * SCALE; // jump height drawn at the same scale as the obstacles it clears
+        runner.position.set(0, visY, 0);
+        // face the smoothed travel direction (no snapping at the track's corners) and lean into lane changes
+        runner.rotation.y = (-state.bearing * Math.PI) / 180 + Math.PI;
+        runner.rotation.z = Math.max(-0.22, Math.min(0.22, (LANES[state.lane] - state.x) * 0.06));
         bubble.visible = state.shield > 0;
-        // pose: run cycle, pedaling on the bike, or a tuck in the air
+        // pose: run cycle, pedaling on the bike, a tuck in the air, or a roll
         const onBike = state.bike > 0;
         const nowR = performance.now();
         const rdt = Math.min(0.1, (nowR - lastRender) / 1000);
         lastRender = nowR;
+        const air = state.y > 0.05;
+        const rolling = state.roll > 0 && !onBike;
+        const rp = rolling ? 1 - state.roll / ROLL_T : 0; // 0 -> 1 through the roll
+        const wR = rolling ? Math.min(1, Math.sin(Math.PI * rp) * 2.5) : 0;
+        const wJ = !onBike && air ? Math.min(1, state.y / 0.8) : 0; // tuck as you rise
+        // roll: spin around the middle, curl up, lower the pivot so the ball stays on the street
+        rollPivot.rotation.x = rolling ? rp * Math.PI * 2 : 0;
+        rollPivot.position.y = PIV - wR * 0.75;
+        // landing squash (and the curl while rolling), scaled from the feet
+        const squash = state.landT > 0 ? 1 - 0.16 * Math.sin(Math.PI * (1 - state.landT / LAND_T)) : 1;
+        const curl = 1 - 0.3 * wR;
+        rollInner.scale.set(curl * (1 + (1 - squash) * 0.6), curl * squash, curl * (1 + (1 - squash) * 0.6));
         if (mixer) {
           const going = started && nowR >= goAt && !state.over;
           if (!going) play("Idle");
           else if (onBike) play("Walk", 1.6);
-          else play("Run", Math.min(1.7, Math.max(0.95, state.speed / 22)));
+          else play("Run", air ? 0.45 : Math.min(1.7, Math.max(0.95, state.speed / 22)));
           human.position.set(0, onBike ? 0.22 : 0, onBike ? -0.2 : 0);
           mixer.update(rdt);
-          applyRetarget();
+          applyRetarget(wJ, wR);
         }
-        const air = state.y > 0.05;
+        // a dust ring where you land, left behind on the street
+        if (dustT > 0) {
+          dustT = Math.max(0, dustT - rdt);
+          const dp = 1 - dustT / DUST_T;
+          dust.visible = dustT > 0;
+          dust.scale.setScalar(RSCALE * (0.7 + dp * 1.8));
+          (dust.material as THREE.MeshBasicMaterial).opacity = 0.5 * (1 - dp);
+          const sp = state.speed * (onBike ? 1.3 : 1) * rdt;
+          dust.position.x -= me.e * sp; dust.position.z += me.n * sp;
+        }
         const ph = state.run * (onBike ? 0.38 : 0.45);
         const sw = Math.sin(ph);
         bike.visible = onBike;
-        shadow.scale.setScalar(RSCALE * (onBike ? 1.5 : 1) * Math.max(0.45, 1 - state.y / 14));
+        shadow.scale.setScalar(RSCALE * (onBike ? 1.5 : rolling ? 0.8 : 1) * Math.max(0.45, 1 - visY / (RSCALE * 3)));
         if (onBike) {
           for (const w of wheels) w.rotation.x = state.run / (0.58 * RSCALE);
           rig.position.set(0, 0.34 + (air ? 0 : Math.abs(sw) * 0.03), 0);
@@ -542,6 +608,11 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
           armL.rotation.x = armR.rotation.x = -1.05;
           armL.rotation.z = 0.12; armR.rotation.z = -0.12;
           trail.scale.y = 0.8 + Math.abs(Math.sin(state.run * 0.9)) * 0.4;
+        } else if (rolling) {
+          rig.position.set(0, 0, 0); rig.rotation.x = 0.5;
+          legL.rotation.x = legR.rotation.x = -2.3;
+          armL.rotation.x = armR.rotation.x = -1.4;
+          armL.rotation.z = -0.1; armR.rotation.z = 0.1;
         } else if (air) {
           rig.position.set(0, 0, 0); rig.rotation.x = 0.12;
           legL.rotation.x = -0.9; legR.rotation.x = 0.5;
@@ -573,7 +644,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
           const p = local(w.lon, w.lat);
           sg.mesh.position.set(p.x, photo ? 6.5 : 9, p.z);
           sg.mesh.rotation.y = -Math.atan2(w.e, w.n);
-          sg.mesh.scale.setScalar(photo ? 0.85 : 1.6);
+          sg.mesh.scale.setScalar(photo ? 0.85 : 1.15);
           if (!sg.counted && ahead < 0 && started) {
             sg.counted = true; state.stations++;
             setFlash(`🚉 ${sg.name} +50`); setTimeout(() => setFlash(null), 1300);
@@ -613,8 +684,11 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
     let photoCanvas: HTMLCanvasElement | null = null;
     const lookAhead = new THREE.PerspectiveCamera(60, 1, 1, 6000);
     const fg = new THREE.Scene();
-    let groundY = -26, groundFound = false, groundT = 0, creditT = 0, photoWaitUntil = Infinity, streetSince = 0, loadT = 0; // Boston streets sit ~26 m under the WGS84 ellipsoid
+    let groundY = -26, groundTarget = -26, groundFound = false, groundT = 0, creditT = 0, photoWaitUntil = Infinity, streetSince = 0, loadT = 0; // Boston streets sit ~26 m under the WGS84 ellipsoid
     const ray = new THREE.Raycaster(), down = new THREE.Vector3(0, -1, 0), rayFrom = new THREE.Vector3(0, 400, 0);
+    // dynamic resolution: sharp when the device keeps up, a little softer instead of stuttering when it can't
+    const prMax = Math.min(window.devicePixelRatio, touchScreen ? 1.75 : 2);
+    let pr = prMax, frameEma = 1 / 60, prT = 0;
     const onResize = () => {
       if (!photoR || !pcam || !el.current) return;
       photoR.setSize(el.current.clientWidth, el.current.clientHeight, false);
@@ -631,7 +705,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       el.current.appendChild(photoCanvas);
       photoR = new THREE.WebGLRenderer({ canvas: photoCanvas, antialias: true, powerPreference: "high-performance" });
       // sharp on laptops, still smooth on phones
-      photoR.setPixelRatio(Math.min(window.devicePixelRatio, touchScreen ? 1.75 : 2));
+      photoR.setPixelRatio(prMax);
       pcam = new THREE.PerspectiveCamera(60, 1, 1, 6000);
       onResize();
       scene.background = new THREE.Color(0xb9d2ea);
@@ -690,8 +764,10 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
           const y = h.point.y - world.position.y;
           if (y > base - 35 && y < base + 260 && (g === null || y < g)) g = y;
         }
-        if (g !== null) { groundY = groundFound ? groundY + (g - groundY) * 0.5 : g; groundFound = true; }
+        if (g !== null) { groundTarget = g; if (!groundFound) groundY = g; groundFound = true; }
       }
+      // glide to the new street level instead of stepping (smooth over curbs, bridges and hills)
+      groundY += (groundTarget - groundY) * Math.min(1, dt * 6);
       world.position.set(-(me.lon - lon0) * mLon(lat0), -groundY, (me.lat - lat0) * M_LAT);
       if (mapReady && goAt === Infinity) {
         // wait until the street is found and every tile around the start has finished downloading
@@ -708,8 +784,9 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       const b = (state.bearing * Math.PI) / 180, fx = Math.sin(b), fz = -Math.cos(b), rx = Math.cos(b), rz = Math.sin(b);
       const side = -state.x * 0.5;
       // high enough to see over the real street trees, like a game chase camera
-      pcam.position.set(-fx * 16 + rx * side, 12, -fz * 16 + rz * side);
-      pcam.lookAt(fx * 20 + rx * side, 1, fz * 20 + rz * side);
+      const hop = state.y * SCALE; // the camera rises a little with each jump, like a chase cam
+      pcam.position.set(-fx * 16 + rx * side, 12 + hop * 0.35, -fz * 16 + rz * side);
+      pcam.lookAt(fx * 20 + rx * side, 1 + hop * 0.5, fz * 20 + rz * side);
       pcam.updateMatrixWorld();
       const aheadM = 100 + state.speed * 1.5;
       lookAhead.position.set(fx * aheadM, 12, fz * aheadM);
@@ -720,6 +797,13 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       photoR.render(scene, pcam);
       photoR.clearDepth();
       photoR.render(fg, pcam);
+      frameEma += (dt - frameEma) * 0.08;
+      prT += dt;
+      if (prT > 1.2 && performance.now() >= goAt) {
+        prT = 0;
+        if (frameEma > 1 / 42 && pr > 1) { pr = Math.max(1, pr - 0.25); photoR.setPixelRatio(pr); }
+        else if (frameEma < 1 / 57 && pr < prMax) { pr = Math.min(prMax, pr + 0.125); photoR.setPixelRatio(pr); }
+      }
       creditT += dt;
       if (creditT > 1) {
         creditT = 0;
@@ -734,6 +818,16 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       if (photo) { photoWaitUntil = performance.now() + 20000; setFlash("📸 Loading real Boston in 3D…"); }
       else goAt = performance.now() + 3000;
       state.t0 = goAt;
+      if (photo) {
+        // the hidden vector map only feeds street names now: hide everything else so it costs almost nothing
+        for (const l of map.getStyle().layers) {
+          try {
+            if (l.id.startsWith("highway-name")) map.setPaintProperty(l.id, "text-opacity", 0);
+            else map.setLayoutProperty(l.id, "visibility", "none");
+          } catch { /* ignore */ }
+        }
+        return;
+      }
       // a prettier real city: brick and brownstone low-rise, sandstone mid-rise, glass towers
       if (map.getLayer("building-3d")) {
         map.setLayerZoomRange("building-3d", 13, 24);
@@ -811,7 +905,17 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
     controls.current = {
       left: () => { if (state.lane > 0) state.lane--; },
       right: () => { if (state.lane < 2) state.lane++; },
-      jump: () => { if (state.y <= 0.001) state.vy = 10; },
+      // jump; pressed a moment before landing, it still fires the instant you touch down
+      jump: () => {
+        if (!started || state.over || performance.now() < goAt) return;
+        if (state.y <= 0.001) doJump(); else state.jumpBuf = 0.15;
+      },
+      // down: slam out of a jump (and roll as you land), or roll under a LOW BRIDGE
+      roll: () => {
+        if (!started || state.over || performance.now() < goAt) return;
+        if (state.y > 0.001) { state.vy = Math.min(state.vy, -24); state.slam = state.bike <= 0; }
+        else if (state.bike <= 0 && state.roll <= 0) state.roll = ROLL_T;
+      },
       // 🚲 blue bike: 8 s, 30% faster, one crash just knocks you off the bike; 20 s cooldown
       bike: () => {
         if (!started || state.over || performance.now() < goAt || state.bike > 0 || state.bikeCd > 0) return;
@@ -823,29 +927,37 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       if (["ArrowLeft", "a", "A"].includes(e.key)) controls.current.left();
       else if (["ArrowRight", "d", "D"].includes(e.key)) controls.current.right();
       else if (["ArrowUp", "w", "W", " "].includes(e.key)) controls.current.jump();
+      else if (["ArrowDown", "s", "S"].includes(e.key)) controls.current.roll();
       else if (["b", "B"].includes(e.key)) controls.current.bike();
       else return;
       e.preventDefault();
     };
-    let touch: { x: number; y: number } | null = null;
+    // swipes fire the moment the finger has moved far enough (not on release), one action per swipe;
+    // a tap does nothing and a quick double-tap hops on the bike, like the hoverboard in Subway Surfers
+    let touch: { x: number; y: number; used: boolean } | null = null;
     let lastTap = 0;
-    const ts = (e: TouchEvent) => { touch = { x: e.touches[0].clientX, y: e.touches[0].clientY }; };
-    const te = (e: TouchEvent) => {
+    const ts = (e: TouchEvent) => { touch = { x: e.touches[0].clientX, y: e.touches[0].clientY, used: false }; };
+    const tm = (e: TouchEvent) => {
+      if (!touch || touch.used) return;
+      const dx = e.touches[0].clientX - touch.x, dy = e.touches[0].clientY - touch.y;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 22) return;
+      touch.used = true;
+      if (Math.abs(dx) > Math.abs(dy)) (dx < 0 ? controls.current.left : controls.current.right)();
+      else if (dy < 0) controls.current.jump();
+      else controls.current.roll();
+    };
+    const te = () => {
       if (!touch) return;
-      const dx = e.changedTouches[0].clientX - touch.x, dy = e.changedTouches[0].clientY - touch.y;
-      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 25) (dx < 0 ? controls.current.left : controls.current.right)();
-      else {
-        controls.current.jump();
-        // a double-tap hops on the bike
+      if (!touch.used) {
         const now = performance.now();
-        if (Math.abs(dx) < 15 && Math.abs(dy) < 15 && now - lastTap < 320) controls.current.bike();
-        lastTap = now;
+        if (now - lastTap < 320) { controls.current.bike(); lastTap = 0; } else lastTap = now;
       }
       touch = null;
     };
     const dbl = (e: MouseEvent) => { e.preventDefault(); controls.current.bike(); };
     window.addEventListener("keydown", onKey);
     el.current.addEventListener("touchstart", ts, { passive: true });
+    el.current.addEventListener("touchmove", tm, { passive: true });
     el.current.addEventListener("touchend", te);
     el.current.addEventListener("dblclick", dbl);
     const host = el.current;
@@ -893,7 +1005,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       g.fillStyle = "#0b0b0b"; g.beginPath(); g.arc(ex, ey, 9, 0, Math.PI * 2); g.fill();
       g.fillStyle = "#fff"; g.font = "800 12px Inter, system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("N", ex, ey + 0.5);
     };
-    let raf = 0, last = performance.now(), hudT = 0, streetT = 0, street = "";
+    let raf = 0, last = performance.now(), hudT = 0, streetT = 0, mapT = 0, street = "";
     const end = () => {
       state.over = true;
       setPhase("over");
@@ -910,15 +1022,33 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
         if (state.bike > 0 && state.bike - dt <= 0) { setFlash("🚲 Bike docked, keep running!"); setTimeout(() => setFlash(null), 1100); }
         state.bike = Math.max(0, state.bike - dt);
         state.bikeCd = Math.max(0, state.bikeCd - dt);
-        state.vy -= 26 * dt;
+        // Subway Surfers-style arc: snappy rise, a short hang at the top, a fast fall (~0.8 s in all)
+        const wasAir = state.y > 0;
+        state.vy -= (state.vy > 2.5 ? 30 : state.vy > -2.5 ? 16 : 50) * dt;
         state.y = Math.max(0, state.y + state.vy * dt);
-        if (state.y === 0) state.vy = Math.max(0, state.vy);
+        if (state.y === 0) {
+          state.vy = Math.max(0, state.vy);
+          if (wasAir) {
+            state.landT = LAND_T;
+            dustT = DUST_T; dust.position.set(0, 0.1, 0); dust.visible = true;
+            if (state.slam) { state.slam = false; if (state.bike <= 0) state.roll = ROLL_T; }
+          }
+          if (state.jumpBuf > 0) doJump();
+        }
+        state.jumpBuf = Math.max(0, state.jumpBuf - dt);
+        state.roll = Math.max(0, state.roll - dt);
+        state.landT = Math.max(0, state.landT - dt);
         state.shield = Math.max(0, state.shield - dt);
         while (state.nextSpawn < state.run + 220) { spawnRow(state.nextSpawn); state.nextSpawn += 30 + Math.random() * 16 + state.speed * 0.25; }
         for (const t of things) {
           if (!t.alive) continue;
           if (t.v) t.s -= t.v * dt;
           if (t.s < state.run - 15) { t.alive = false; scene.remove(t.mesh); continue; }
+          if (t.kind === "gate" && !gateHinted && t.s - state.run < 90) {
+            gateHinted = true;
+            setFlash(touchScreen ? "⬇ Swipe down to roll under the LOW BRIDGE" : "⬇ Press ↓ to roll under the LOW BRIDGE");
+            setTimeout(() => setFlash(null), 1800);
+          }
           if (t.lane !== state.lane || Math.abs(state.x - LANES[t.lane]) > 1.6) continue;
           const dz = Math.abs(t.s - state.run);
           if ((t.kind === "token" || t.kind === "shield") && dz < 1.4) {
@@ -926,12 +1056,17 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
             if (t.kind === "token") state.tokens++;
             else { state.shield = 6; setFlash("☕ Coffee shield: 6 s"); setTimeout(() => setFlash(null), 1200); }
           } else if (t.kind !== "token" && t.kind !== "shield" && dz < t.len / 2 + 0.6) {
-            if (t.kind !== "bus" && t.kind !== "train" && state.y * 1 > t.h * 0.9) continue;
+            if (t.kind === "gate") { if (state.roll > 0) continue; } // rolled under the low bridge
+            else if (t.kind !== "bus" && t.kind !== "train" && state.y > t.h * 0.9) continue; // jumped it
             if (state.shield > 0) { t.alive = false; scene.remove(t.mesh); state.shield = 0; setFlash("Shield used!"); setTimeout(() => setFlash(null), 900); }
             else if (state.bike > 0) { t.alive = false; scene.remove(t.mesh); state.bike = 0; state.vy = 7; setFlash("💥 Off the bike! Keep running"); setTimeout(() => setFlash(null), 1100); }
             else end();
           }
         }
+        // drop finished pieces so the per-frame loops stay short on long runs
+        let keep = 0;
+        for (const t of things) if (t.alive) things[keep++] = t;
+        things.length = keep;
       }
       state.x += (LANES[state.lane] - state.x) * Math.min(1, dt * 12);
       // camera: behind and above the runner, looking down the real street
@@ -944,7 +1079,9 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       const [clon, clat] = offset(me.lon, me.lat, me.e, me.n, state.x * 0.5, real ? 15 : 22);
       if (photo) {
         renderPhoto(dt);
-        if (streetT > 0.6) map.jumpTo({ center: [clon, clat], bearing: state.bearing, pitch: 60, zoom: 18 });
+        // the hidden vector map only feeds street names: move it once a second, not every frame
+        mapT += dt;
+        if (mapT > 1) { mapT = 0; map.jumpTo({ center: [clon, clat], bearing: state.bearing, pitch: 60, zoom: 18 }); }
       } else {
         map.jumpTo({ center: [clon, clat], bearing: state.bearing, pitch: real ? 80 : 77, zoom: real ? 19.75 : 19.35 });
         map.triggerRepaint();
@@ -975,6 +1112,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       window.removeEventListener("keydown", onKey);
       host.removeEventListener("touchstart", ts);
       host.removeEventListener("touchend", te);
+      host.removeEventListener("touchmove", tm);
       host.removeEventListener("dblclick", dbl);
       disposed = true;
       window.removeEventListener("resize", onResize);
@@ -995,7 +1133,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className={`runner${look !== "color" ? " real" : ""}`}>
+    <div className={`runner${look !== "color" ? " real" : ""}${look === "photo" && tilesKey ? " photo" : ""}`}>
       <div ref={el} className="runner-stage" />
       {phase === "playing" && <div className={`speedlines${hud.bike > 0 ? " bike" : ""}`} style={{ opacity: hud.bike > 0 ? 0.9 : Math.max(0, Math.min(0.85, (hud.kmh - 70) / 90)) }} />}
       <div className="runner-top">
@@ -1027,6 +1165,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
         <div className="runner-pad">
           <button onClick={() => controls.current.left()} aria-label="Left">◀</button>
           <button onClick={() => controls.current.jump()} aria-label="Jump">▲</button>
+          <button onClick={() => controls.current.roll()} aria-label="Roll">▼</button>
           <button onClick={() => controls.current.right()} aria-label="Right">▶</button>
           <button className={`bike-btn${hud.bike > 0 ? " on" : hud.bikeCd > 0 ? " cool" : ""}`} onClick={() => controls.current.bike()} aria-label="Blue bike">
             🚲{hud.bikeCd > 0 && hud.bike <= 0 && <small>{hud.bikeCd}</small>}
@@ -1040,7 +1179,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
               <div className="logo" style={{ fontSize: 28 }}>Street <i>Runner</i></div>
               <p className="small muted" style={{ margin: 0 }}>
                 Run your T line's real route through the real streets of Boston: real buildings, real street names, real shops. Dodge shuttle buses and DELAY barriers, grab tokens, +50 for every station you pass.
-                ← → to switch lanes, ↑ or Space to jump, or swipe. Double-click (double-tap, or B) to hop on a 🚲 blue bike: 30% faster, and a crash only knocks you off the bike.
+                Swipe or use the arrow keys: ← → switch lanes, ↑ jump the DELAY barriers, ↓ roll under the LOW BRIDGE signs (↓ in the air slams you down). Double-click (double-tap, or B) to hop on a 🚲 blue bike: 30% faster, and a crash only knocks you off the bike.
               </p>
             </>
           ) : (
