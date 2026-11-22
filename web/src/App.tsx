@@ -16,6 +16,7 @@ import { PlanView } from "./views/PlanView";
 import { MeView } from "./views/MeView";
 import { LiveView } from "./views/LiveView";
 import { RideView } from "./views/RideView";
+import { FreeBostonView } from "./views/FreeBoston";
 
 export function App() {
   return (
@@ -70,6 +71,7 @@ function Shell() {
       {s.panel === "find" && <FindView />}
       {s.panel === "week" && <FirstWeekView />}
       {s.panel === "proof" && <ProofView />}
+      {s.panel === "free" && <FreeBostonView />}
       {s.panel === "welcome" && <Welcome onDone={() => s.setPanel("week")} />}
       {s.checkinSpot && <CheckinFlow />}
       {!s.panel && !s.stationId && !s.checkinSpot && s.me && <QuestCard />}
@@ -135,6 +137,7 @@ function TopBar() {
             {m.icon} {m.label}
           </button>
         ))}
+        <button className="chip accent free-chip" onClick={() => { s.openStation(null); s.setPanel(s.panel === "free" ? null : "free"); }}>💸 $0 Boston</button>
         <button className="chip accent run-chip" onClick={() => (s.me ? s.setPanel("run") : s.setSignedOutBrowse(false))}>🏃 Street Runner</button>
       </div>
       <button className="searchbar" onClick={() => { s.openStation(null); s.setPanel("find"); }}>🔍 <span>Find food or a study spot near you</span></button>
