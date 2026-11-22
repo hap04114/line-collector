@@ -25,3 +25,16 @@
   .quest-pts { font-size: 19px; }
   .searchbar { min-height: 44px; font-size: 14px; }
 }
+
+/* ---- desktop layout: left column, quests top-right, clear map center ---- */
+@media (min-width: 900px) {
+  .topbar { right: auto; width: 420px; left: 14px; top: 14px; }
+  .topbar .layer-chips { flex-wrap: wrap; overflow: visible; }
+  .searchbar, .nearest { width: 100%; }
+  .nearest { align-self: stretch; }
+  .quest { left: auto; right: 14px; top: 14px; bottom: auto; transform: none; width: 380px; max-width: none; }
+  div.quest-week { display: flex; }
+  .bottomnav { bottom: 14px; }
+  .sheet { top: 14px; }
+}
+@media (min-width: 900px) and (max-height: 700px) { .quest .quest-week:not(button) { display: none; } }
