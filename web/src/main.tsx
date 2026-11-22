@@ -6,6 +6,7 @@ import "./landing.css";
 import "./map-overlays.css";
 import "./doodles.css";
 import "./runner.css";
+import "./free-boston.css";
 import { App } from "./App";
 import { OwnerPage } from "./views/OwnerPage";
 import { I18nProvider } from "./i18n";
