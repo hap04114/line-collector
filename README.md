@@ -116,3 +116,11 @@ Map data © OpenStreetMap contributors (ODbL), tiles by OpenFreeMap / OpenMapTil
 - [docs/FINAL_DRAFT.md](docs/FINAL_DRAFT.md): pitch, what sets us apart, sponsors, demo script, judge answers, Devpost text
 - [docs/KEYS.md](docs/KEYS.md): every key and account to collect, and where each goes
 - In the app: Me → 🔧 How it's built shows live proof for each sponsor
+
+## Working together (avoid clashes)
+
+- Never work directly on `main`. Make a branch: `git checkout -b <yourname>/<what>` (e.g. `aakanksha/vultr-deploy`).
+- Before you start and before you push: `git pull --rebase origin main`.
+- Push your branch and open a pull request; merge it once it builds (`npm run typecheck && npm test && npm run build`).
+- Keys only ever go in `.env` (gitignored). Never commit them.
+- Areas: Himani owns `web/` UI and the game; Aakanksha owns deployment (`Dockerfile`, `docker-compose.yml`, `Caddyfile`, server `.env`) and sponsor accounts. Touching the other's area? Say so in the team chat first.

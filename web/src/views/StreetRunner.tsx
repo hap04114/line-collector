@@ -101,6 +101,13 @@ function label(text: string, bg: string, fg = "#fff") {
 export function StreetRunner({ onClose }: { onClose: () => void }) {
   const s = useStore();
   const homeStations = s.config?.schools.find((c) => c.id === s.me?.user?.school?.id)?.homeStations ?? [];
+  const [look, setLook] = useState<"real" | "color">(() => {
+    try {
+      return (localStorage.getItem("lc-runner-look") as "real" | "color") || "real";
+    } catch {
+      return "real";
+    }
+  });
   const [line, setLine] = useState(() => s.stationById.get(homeStations[0] ?? "")?.routes[0] ?? "Green-B");
   const [phase, setPhase] = useState<"ready" | "playing" | "over">("ready");
   const [runKey, setRunKey] = useState(0);
@@ -307,27 +314,42 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       if (map.getLayer("building-3d")) {
         map.setLayerZoomRange("building-3d", 13, 24);
         const h = ["coalesce", ["get", "render_height"], 8];
-        map.setPaintProperty("building-3d", "fill-extrusion-color", [
+        const pick = ["%", ["floor", ["+", ["*", h, 3.7], ["*", ["coalesce", ["get", "render_min_height"], 0], 1.3]]], 4];
+        const realColor = [
+          "case",
+          // a real building colour from OpenStreetMap wins when it's tagged
+          ["has", "colour"], ["to-color", ["get", "colour"], "#b9ab98"],
+          // glass and steel towers
+          [">", h, 45], ["match", pick, 0, "#7f93a8", 1, "#8a9bb0", 2, "#6e8299", "#93a5b8"],
+          // limestone, concrete and brownstone mid-rise
+          [">", h, 16], ["match", pick, 0, "#c8bba6", 1, "#b9ad9a", 2, "#a49d93", "#8f6f5a"],
+          // Boston brick and brownstone row houses
+          ["match", pick, 0, "#9c5b45", 1, "#a8674f", 2, "#8b5040", "#b58466"],
+        ];
+        const candy = [
           "case", [">", h, 70], ["interpolate", ["linear"], h, 70, "#9fd3ff", 200, "#5aa8ff"],
           ["match", ["%", ["floor", ["+", ["*", h, 3.7], ["*", ["coalesce", ["get", "render_min_height"], 0], 1.3]]], 8],
             0, "#ff9ebb", 1, "#ffd166", 2, "#7fe0d0", 3, "#9ccfff", 4, "#ffb38a", 5, "#c7b3ff", 6, "#b9f28c", 7, "#ffe08a", "#ffc4d6"],
-        ] as any);
+        ];
+        map.setPaintProperty("building-3d", "fill-extrusion-color", (look === "real" ? realColor : candy) as any);
         map.setPaintProperty("building-3d", "fill-extrusion-opacity", 1);
         map.setPaintProperty("building-3d", "fill-extrusion-vertical-gradient", true);
       }
       for (const l of map.getStyle().layers) if (/shield|oneway/.test(l.id)) map.setLayoutProperty(l.id, "visibility", "none");
       try {
-        (map as any).setSky({ "sky-color": "#6fb1ff", "horizon-color": "#ffd6a3", "fog-color": "#ffe6c7", "sky-horizon-blend": 0.55, "horizon-fog-blend": 0.6, "fog-ground-blend": 0.35, "atmosphere-blend": 0.8 });
+        (map as any).setSky(look === "real"
+          ? { "sky-color": "#8fbde8", "horizon-color": "#e4ecf3", "fog-color": "#e9eef3", "sky-horizon-blend": 0.7, "horizon-fog-blend": 0.75, "fog-ground-blend": 0.5, "atmosphere-blend": 0.6 }
+          : { "sky-color": "#6fb1ff", "horizon-color": "#ffd6a3", "fog-color": "#ffe6c7", "sky-horizon-blend": 0.55, "horizon-fog-blend": 0.6, "fog-ground-blend": 0.35, "atmosphere-blend": 0.8 });
       } catch { /* older style spec */ }
       try {
-        map.setLight({ anchor: "viewport", color: "#fff4e0", intensity: 0.45, position: [1.4, 210, 35] } as any);
+        map.setLight({ anchor: "viewport", color: look === "real" ? "#ffffff" : "#fff4e0", intensity: look === "real" ? 0.32 : 0.45, position: [1.2, 220, 32] } as any);
       } catch { /* ignore */ }
       // the line as a real track bed with sleepers and rails, glowing in the line's color
       const below = map.getStyle().layers.find((x) => x.type === "symbol")?.id;
       const W = (a: number, b: number) => ["interpolate", ["exponential", 2], ["zoom"], 15, a, 20, b] as any;
       map.addSource("route", { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: coords } } as any });
-      map.addLayer({ id: "route-glow", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": route.color, "line-width": W(8, 150), "line-opacity": 0.35, "line-blur": W(2, 30) } }, below);
-      map.addLayer({ id: "route-bed", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#4a4f5c", "line-width": W(5, 110) } }, below);
+      map.addLayer({ id: "route-glow", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": route.color, "line-width": W(8, 150), "line-opacity": look === "real" ? 0.18 : 0.35, "line-blur": W(2, 30) } }, below);
+      map.addLayer({ id: "route-bed", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": look === "real" ? "#6f6a63" : "#4a4f5c", "line-width": W(5, 110) } }, below);
       map.addLayer({ id: "route-sleepers", type: "line", source: "route", paint: { "line-color": "#7a634c", "line-width": W(4, 96), "line-dasharray": [0.08, 0.32] } }, below);
       for (const off of [-1, 1]) for (const lane of [-36, 0, 36]) {
         map.addLayer({ id: `rail-${off}-${lane}`, type: "line", source: "route", paint: { "line-color": "#e8edf3", "line-width": W(0.4, 3), "line-offset": W((lane + off * 8) / 32, lane + off * 8) } }, below);
@@ -433,7 +455,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       map.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [line, runKey, s.statics]);
+  }, [line, runKey, s.statics, look]);
 
   const start = () => {
     autoStart.current = true;
@@ -491,6 +513,13 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
               <div className="center small muted">{hud.distance} m through Boston · {hud.tokens} tokens</div>
             </>
           )}
+          <div className="seg" style={{ padding: 3 }}>
+            {(["real", "color"] as const).map((v) => (
+              <button key={v} className={look === v ? "on" : ""} onClick={() => { autoStart.current = false; setLook(v); setPhase("ready"); try { localStorage.setItem("lc-runner-look", v); } catch { /* ignore */ } }}>
+                {v === "real" ? "🏙️ Real city" : "🍬 Colorful"}
+              </button>
+            ))}
+          </div>
           <div className="chips" style={{ flexWrap: "wrap" }}>
             {(s.statics?.routes ?? []).map((r) => (
               <button key={r.id} className={`chip ${line === r.id ? "on" : ""}`} onClick={() => { autoStart.current = false; setLine(r.id); setPhase("ready"); }}><LinePill id={r.id} /> {r.short}</button>
