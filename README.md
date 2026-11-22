@@ -29,7 +29,7 @@ Copy `.env.example` to `.env` to add keys. `npm test` runs the unit tests for sc
 | **Map** | OpenFreeMap tiles on MapLibre GL with 3D buildings, every T line, trains moving in real time, your GPS position, tinted campuses, your nearest station and campus. Day/night styles. |
 | **Explore** | Three spots under budget per station (craving, Taste of Home, vibe, open now, open past midnight), free landmark hangouts, neighborhood stamps with one-liners, local tips. |
 | **Check-in** | GPS within 150 m (400 m for big landmarks), photo fingerprint (dHash) must be new, Gemini confirms the photo, 5 scored check-ins a day and one per spot. Slow Gemini → saved as pending and scored when the answer arrives. |
-| **Game** | The design doc's points table, x4 multiplier cap, weekly streak with one free skip a month, levels Newcomer→Townie, 17 badges, bring-a-friend (both students get x2), away games, neutral ground, shutdown x1.5, Chaos bonus, Warm-Up quests, events as data. |
+| **Game** | The design doc's points table, x4 multiplier cap, weekly streak with one free skip a month, levels Newcomer→Townie, 18 badges, bring-a-friend (both students get x2), away games, neutral ground, shutdown x1.5, Chaos bonus, Warm-Up quests, events as data. |
 | **Board** | Schools ranked by average points per active player (min 10) or total stops; weekly race timeline; your school; friends by code. |
 | **Your Boston** | Money saved vs. your usual near-campus meal, neighborhoods explored out of 23, local spots supported. |
 | **Partner rewards** | Punch cards, 6-digit codes that expire in 2 minutes, owner page (`/owner`) with offers, slow-hour bonuses and visits by hour. |
@@ -47,7 +47,7 @@ Copy `.env.example` to `.env` to add keys. `npm test` runs the unit tests for sc
 - **Tiger Data**: with `DATABASE_URL` pointing at Tiger Cloud, `checkins`, `train_positions`, `train_predictions` and `line_metrics` become hypertables. `weekly_user_points` (the school board), `line_metrics_15m` (delay by hour) and `spot_visits_hourly` (the owner chart) are continuous aggregates with refresh policies; raw train data has retention policies. See `server/src/db/schema.ts`.
 - **Vultr**: `docker compose up -d --build` runs the API, the 24/7 MBTA poller and the web app, with Caddy for automatic HTTPS. GPS on phones only works over HTTPS.
 - **GoDaddy Registry domain**: point the domain's A record at the Vultr server and set `DOMAIN` in `.env`.
-- **Solana**: line badges are written to devnet as memo transactions when `SOLANA_SECRET_KEY` is set (`npm run solana:wallet`). The badge links to Solana Explorer.
+- **Solana**: each partner reward redemption is written to devnet as an on-chain receipt the business can verify (`npm run solana:wallet`, then `SOLANA_SECRET_KEY`).
 
 ## Deploy on Vultr
 
@@ -110,3 +110,9 @@ data/                 baked data the app loads at boot
 ## Credits
 
 Map data © OpenStreetMap contributors (ODbL), tiles by OpenFreeMap / OpenMapTiles. Transit data from the MBTA V3 API. Neighborhood boundaries from Analyze Boston. Weather from Open-Meteo.
+
+## Final draft and keys
+
+- [docs/FINAL_DRAFT.md](docs/FINAL_DRAFT.md): pitch, what sets us apart, sponsors, demo script, judge answers, Devpost text
+- [docs/KEYS.md](docs/KEYS.md): every key and account to collect, and where each goes
+- In the app: Me → 🔧 How it's built shows live proof for each sponsor
