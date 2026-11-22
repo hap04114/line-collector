@@ -35,7 +35,7 @@ export function Welcome({ onDone }: { onDone: () => void }) {
   return (
     <Sheet title={`👋 Welcome to Boston${s.me?.user?.name ? `, ${s.me.user.name.split(" ")[0].replace("(demo)", "")}` : ""}`} sub="Three questions, then your first week starts" onClose={save} full>
       <div className="card hero">
-        No car, about $10 a meal, and a city you don't know yet. Line Collector gets you out of the campus bubble: food that tastes like home, places to study, and the T lines that get you there.
+        No car, about $10 a meal, and a city you don't know yet. Charlie on the MTA gets you out of the campus bubble: food that tastes like home, places to study, and the T lines that get you there.
       </div>
       <div className="field">
         <label>Where's home? We'll find food that tastes like it.</label>

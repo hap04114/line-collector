@@ -52,7 +52,7 @@ export function RideView() {
     }
   };
   const share = async (r: any) => {
-    const text = `I'm splitting a ride from ${r.from} T station to ${r.toArea} at ${new Date(r.departAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} with ${r.poster} (${s.me?.user?.school?.short} student, via Line Collector).`;
+    const text = `I'm splitting a ride from ${r.from} T station to ${r.toArea} at ${new Date(r.departAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} with ${r.poster} (${s.me?.user?.school?.short} student, via Charlie on the MTA).`;
     try {
       if (navigator.share) await navigator.share({ text });
       else {

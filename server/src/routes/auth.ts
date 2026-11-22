@@ -36,8 +36,8 @@ authRoutes.post("/auth/start", async (req, res) => {
   const link = await issueLoginToken(body.email, "student", body.name);
   const sent = await sendEmail(
     body.email,
-    "Your Line Collector sign-in link",
-    `<p>Tap to sign in to Line Collector as a ${school.short} student:</p><p><a href="${link}">${link}</a></p><p>This link expires in 20 minutes. If you didn't ask for it, ignore this email.</p>`,
+    "Your Charlie on the MTA sign-in link",
+    `<p>Tap to sign in to Charlie on the MTA as a ${school.short} student:</p><p><a href="${link}">${link}</a></p><p>This link expires in 20 minutes. If you didn't ask for it, ignore this email.</p>`,
   );
   res.json({ ok: true, school: school.id, sent, devLink: config.devShowMagicLink ? link : undefined });
 });
@@ -50,7 +50,7 @@ authRoutes.post("/auth/owner-start", async (req, res) => {
   let devLink: string | undefined;
   if (p) {
     const link = await issueLoginToken(body.email, "owner");
-    await sendEmail(body.email, "Line Collector owner sign-in", `<p><a href="${link}">Sign in to your owner page</a></p>`);
+    await sendEmail(body.email, "Charlie on the MTA owner sign-in", `<p><a href="${link}">Sign in to your owner page</a></p>`);
     if (config.devShowMagicLink) devLink = link;
   }
   res.json({ ok: true, devLink });

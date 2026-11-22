@@ -71,7 +71,7 @@ async function main() {
   });
 
   app.listen(config.port, () => {
-    console.log(`[server] Line Collector on ${config.publicUrl} (port ${config.port})${config.demoMode ? " · DEMO_MODE on" : ""}`);
+    console.log(`[server] Charlie on the MTA on ${config.publicUrl} (port ${config.port})${config.demoMode ? " · DEMO_MODE on" : ""}`);
   });
 
   await startPoller(db);
