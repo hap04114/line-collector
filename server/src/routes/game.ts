@@ -350,3 +350,59 @@ gameRoutes.get("/find", async (req, res) => {
   });
   res.json({ origin, lat, lon, kind, ...r });
 });
+
+/**
+ * First Week in Boston: five newcomer quests that turn "how a new student becomes a Bostonian"
+ * into the product. Status comes from real check-ins; each quest points at a real nearby target.
+ */
+gameRoutes.get("/first-week", requireUser, async (req, res) => {
+  const db = await getDb();
+  const u = req.user;
+  const sc = schoolById(u.school_id)!;
+  const lat = Number.isFinite(Number(req.query.lat)) ? Number(req.query.lat) : sc.lat;
+  const lon = Number.isFinite(Number(req.query.lon)) ? Number(req.query.lon) : sc.lon;
+  const VALID = "c.verified IN ('verified','unchecked')";
+  const [home, landmark, study, lines, rights] = await Promise.all([
+    db.one(`SELECT count(*)::int AS n FROM checkins c JOIN spots s ON s.id=c.spot_id WHERE c.user_id=$1 AND ${VALID} AND s.region IS NOT NULL AND s.region = ANY($2)`, [u.id, u.home_regions]),
+    db.one(`SELECT count(*)::int AS n FROM checkins c JOIN spots s ON s.id=c.spot_id WHERE c.user_id=$1 AND ${VALID} AND s.kind IN ('landmark','hangout')`, [u.id]),
+    db.one(`SELECT count(*)::int AS n FROM checkins c JOIN spots s ON s.id=c.spot_id WHERE c.user_id=$1 AND ${VALID} AND (s.study OR s.kind='study')`, [u.id]),
+    db.query(`SELECT DISTINCT unnest(st.routes) AS r FROM collections c JOIN stations st ON st.id=c.station_id WHERE c.user_id=$1`, [u.id]),
+    db.one(`SELECT rights_checked FROM users WHERE id=$1`, [u.id]),
+  ]);
+  // fetch nearby spots once (wider only if needed) and pick every quest target from that list
+  const lists: Record<string, any[]> = {};
+  const listFor = async (kind: "food" | "study", radiusM: number) =>
+    (lists[`${kind}${radiusM}`] ??= (await nearbySpots(db, { lat, lon, kind, homeRegions: u.home_regions, userId: u.id, radiusM, limit: 5000 })).spots);
+  const pick = async (kind: "food" | "study", filter: (x: any) => boolean, budgets: (number | null)[] = [null]) => {
+    for (const radiusM of [3000, 9000])
+      for (const budget of budgets) {
+        const hit = (await listFor(kind, radiusM)).find((x) => filter(x) && (budget == null || x.priceCents <= budget));
+        if (hit) return { id: hit.id, name: hit.name, stationId: hit.stationId, station: hit.station, lat: hit.lat, lon: hit.lon, distanceM: hit.distanceM, priceCents: hit.priceCents, priceSource: hit.priceSource };
+      }
+    return null;
+  };
+  const myLines = new Set(lines.map((r: any) => r.r));
+  const newLineStation = [...STATIONS]
+    .filter((st) => st.routes.some((r) => !myLines.has(r)))
+    .map((st) => ({ st, d: Math.hypot((st.lat - lat) * 111_000, (st.lon - lon) * 82_000) }))
+    .sort((a, b) => a.d - b.d)[0];
+  const quests = [
+    {
+      id: "taste", icon: "🏠", title: "A taste of home on a student budget",
+      why: "International students name food from home as what they miss most.",
+      done: (home?.n ?? 0) > 0, needsSetup: !u.home_regions?.length,
+      target: u.home_regions?.length ? await pick("food", (x) => x.kind === "food" && !!x.region && u.home_regions.includes(x.region), [Math.max(u.budget_cents, 1000), 1500, 2000]) : null,
+    },
+    { id: "landmark", icon: "🌳", title: "A free Boston landmark", why: "Boston Common, the Esplanade, the Harborwalk: the city's best spots cost nothing.", done: (landmark?.n ?? 0) > 0, target: await pick("food", (x) => x.kind === "landmark" || x.kind === "hangout") },
+    { id: "study", icon: "📚", title: "Find your study spot", why: "A place off campus that's yours during finals.", done: (study?.n ?? 0) > 0, target: await pick("study", () => true) },
+    {
+      id: "line", icon: "🚇", title: "Ride a line you've never taken", why: "Most students never leave the one line by campus.",
+      done: myLines.size >= 2,
+      target: newLineStation ? { stationId: newLineStation.st.id, station: newLineStation.st.name, name: newLineStation.st.name, lat: newLineStation.st.lat, lon: newLineStation.st.lon, distanceM: Math.round(newLineStation.d), lines: newLineStation.st.routes.filter((r) => !myLines.has(r)) } : null,
+    },
+    { id: "rights", icon: "🛡️", title: "Know your rights before you rent", why: "Broker fees you may not owe, and 490+ Boston rental scam victims this year (FBI).", done: !!rights?.rights_checked, target: null },
+  ];
+  const done = quests.filter((q) => q.done).length;
+  if (done === quests.length) await db.query("INSERT INTO badges (user_id, badge_id, meta) VALUES ($1,'bostonian','{}') ON CONFLICT DO NOTHING", [u.id]);
+  res.json({ quests, done, total: quests.length, origin: Number.isFinite(Number(req.query.lat)) ? "gps" : `campus:${sc.short}` });
+});

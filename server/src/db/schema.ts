@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS spots (
 );
 CREATE INDEX IF NOT EXISTS spots_station_idx ON spots (station_id);
 ALTER TABLE spots ADD COLUMN IF NOT EXISTS diet text[] NOT NULL DEFAULT '{}';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS rights_checked boolean NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS checkins (
   id text NOT NULL,

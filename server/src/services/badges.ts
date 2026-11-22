@@ -14,6 +14,7 @@ export const BADGES: BadgeDef[] = [
   { id: "good-company", name: "Good Company", icon: "🤝", description: "5 bring-a-friend check-ins." },
   { id: "wicked-early", name: "Wicked Early", icon: "🌅", description: "A check-in before 8 AM." },
   { id: "local-guide", name: "Local Guide", icon: "🧭", description: "5 of your tips marked helpful." },
+  { id: "bostonian", name: "Bostonian in a Week", icon: "🦞", description: "Finished all five First Week in Boston quests." },
 ];
 export const badgeById = new Map(BADGES.map((b) => [b.id, b]));
 

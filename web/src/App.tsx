@@ -4,6 +4,7 @@ import { useI18n } from "./i18n";
 import { nearestStation, StoreProvider, useQuest, useStore, type Mode } from "./store";
 import { StreetRunner } from "./views/StreetRunner";
 import { FindView } from "./views/FindView";
+import { FirstWeekView, Welcome, useFirstWeek } from "./views/FirstWeek";
 import { MapView } from "./components/MapView";
 import { StationSheet } from "./components/StationSheet";
 import { CheckinFlow } from "./components/CheckinFlow";
@@ -32,6 +33,14 @@ function Shell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s.me?.user?.lang]);
 
+  useEffect(() => {
+    if (!s.me || s.panel) return;
+    let welcomed = false;
+    try { welcomed = localStorage.getItem("lc-welcomed") === "1"; } catch { /* ignore */ }
+    if (!welcomed && !s.me.user.homeRegions?.length) s.setPanel("welcome");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.me?.user?.id]);
+
   if (!s.config) return <div className="signin"><div className="signin-wrap"><div className="logo">Line <i>Collector</i></div><p className="muted">Loading…</p></div></div>;
   if (!s.me && !s.signedOutBrowse) return <SignIn />;
 
@@ -46,6 +55,8 @@ function Shell() {
       {s.panel === "live" && <LiveView />}
       {s.panel === "ride" && <RideView />}
       {s.panel === "find" && <FindView />}
+      {s.panel === "week" && <FirstWeekView />}
+      {s.panel === "welcome" && <Welcome onDone={() => s.setPanel("week")} />}
       {s.checkinSpot && <CheckinFlow />}
       {!s.panel && !s.stationId && !s.checkinSpot && s.me && <QuestCard />}
       <BottomNav />
@@ -160,6 +171,7 @@ function BottomNav() {
 function QuestCard() {
   const s = useStore();
   const q = useQuest();
+  const fw = useFirstWeek();
   const me = s.me;
   const goal = 3;
   const done = Math.min(goal, me?.weekStops ?? 0);
@@ -170,6 +182,13 @@ function QuestCard() {
   };
   return (
     <div className="quest">
+      {fw && fw.done < fw.total && (
+        <button className="quest-week" style={{ cursor: "pointer", border: "1px solid #4a6a00" }} onClick={() => s.setPanel("week")}>
+          <span className="tiny" style={{ fontWeight: 800 }}>🗓️ First Week in Boston</span>
+          <div className="bar grow"><i style={{ width: `${(100 * fw.done) / fw.total}%`, background: "var(--accent)" }} /></div>
+          <b className="tiny">{fw.done}/{fw.total} ›</b>
+        </button>
+      )}
       <div className="quest-main" onClick={go} role="button">
         <div className="quest-icon">🎯</div>
         <div className="grow">

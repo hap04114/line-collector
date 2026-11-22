@@ -31,7 +31,9 @@ liveRoutes.post("/listing-check", upload.single("screenshot"), async (req, res) 
   if (!text.trim() && !req.file) throw new HttpError(400, "Paste a listing or attach a screenshot");
   if (!rateLimit(`listing:${req.user?.id ?? req.ip}`, 20, 10 * 60_000)) throw new HttpError(429, "Too many checks; try again shortly");
   const image = req.file ? { mime: "image/jpeg", data: await normalizePhoto(req.file.buffer, 1600) } : undefined;
-  res.json(await checkListing(text || "(screenshot only)", image));
+  const result = await checkListing(text || "(screenshot only)", image);
+  if (req.user) await (await getDb()).query("UPDATE users SET rights_checked=true WHERE id=$1", [req.user.id]);
+  res.json(result);
 });
 
 liveRoutes.get("/rent", (req, res) => {
