@@ -24,7 +24,8 @@
     "bake:vibes": "tsx scripts/bake-vibes.ts",
     "solana:wallet": "tsx scripts/solana-wallet.ts",
     "merge:diet": "tsx scripts/merge-diet.ts",
-    "embed:spots": "tsx scripts/embed-spots.ts"
+    "embed:spots": "tsx scripts/embed-spots.ts",
+    "bake:commuter": "tsx scripts/bake-commuter.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.124",

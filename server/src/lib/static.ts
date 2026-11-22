@@ -21,6 +21,14 @@ export const SHAPES: Shape[] = mbta.shapes;
 export const ROUTE_IDS = ROUTES.map((r) => r.id);
 export const routeById = new Map(ROUTES.map((r) => [r.id, r]));
 
+// Commuter Rail (npm run bake:commuter): map layer and Street Runner lines; not part of check-in scoring
+const cr = readIf("commuter-rail.json", { routes: [], stations: [], shapes: [] });
+export const CR_ROUTES: Route[] = cr.routes;
+export const CR_SHAPES: Shape[] = cr.shapes;
+export const CR_STATIONS: { id: string; name: string; lat: number; lon: number; routes: string[] }[] = cr.stations;
+/** Lines you can run in Street Runner: subway plus Commuter Rail */
+export const RUNNABLE_ROUTE_IDS = [...ROUTE_IDS, ...CR_ROUTES.map((r) => r.id)];
+
 export const NB_FEATURES: { id: string; name: string; geometry: any }[] = nbGeo.features.map((f: any) => ({
   id: f.properties.id,
   name: f.properties.name,

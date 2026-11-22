@@ -12,6 +12,8 @@ export interface Config {
 export interface Statics {
   routes: Route[]; shapes: { type: "FeatureCollection"; features: any[] }; stations: Station[]; schools: School[]; neighborhoods: Neighborhood[];
   cravings: { id: string; label: string }[]; vibes: string[];
+  /** MBTA Commuter Rail: on the map and in Street Runner only (the scoring game stays subway-only) */
+  commuter?: { routes: Route[]; shapes: { type: "FeatureCollection"; features: any[] }; stations: { id: string; name: string; lat: number; lon: number; routes: string[] }[] };
 }
 export interface MapState { collected: string[]; stamps: string[]; weekOwners: Record<string, { school: string; checkins: number }>; lines: { routeId: string; chaos: number; shuttle: boolean; alertCount: number }[] }
 export type Mode = "explore" | "study" | "live" | "ride";

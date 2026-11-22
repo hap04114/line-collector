@@ -159,6 +159,23 @@ export function MapView() {
       firstSymbol,
     );
 
+    // Commuter Rail: purple rail lines with white ties and small stop rings, drawn under the subway
+    if (s.statics.commuter?.shapes.features.length) {
+      map.addSource("lc-cr", { type: "geojson", data: s.statics.commuter.shapes });
+      map.addSource("lc-cr-stops", { type: "geojson", data: fc(s.statics.commuter.stations.map((st) => pt(st.lon, st.lat, { name: st.name }))) });
+      map.addLayer({ id: "lc-cr-casing", type: "line", source: "lc-cr", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#000", "line-width": 6, "line-opacity": 0.3 } });
+      map.addLayer({ id: "lc-cr", type: "line", source: "lc-cr", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#80276C", "line-width": 3.5 } });
+      map.addLayer({ id: "lc-cr-ties", type: "line", source: "lc-cr", paint: { "line-color": "#ffffff", "line-width": 1.2, "line-dasharray": [0.6, 3] } });
+      map.addLayer({
+        id: "lc-cr-stops", type: "circle", source: "lc-cr-stops", minzoom: 10.5,
+        paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 10.5, 2.5, 16, 6], "circle-color": "#ffffff", "circle-stroke-color": "#80276C", "circle-stroke-width": 2 },
+      });
+      map.addLayer({
+        id: "lc-cr-labels", type: "symbol", source: "lc-cr-stops", minzoom: 13,
+        layout: { "text-field": ["get", "name"], "text-font": FONT, "text-size": 11, "text-offset": [0, 1.1], "text-anchor": "top", "text-optional": true },
+        paint: { "text-color": "#80276C", "text-halo-color": "#ffffff", "text-halo-width": 1.5 },
+      });
+    }
     map.addSource("lc-lines", { type: "geojson", data: s.statics.shapes });
     map.addLayer({ id: "lc-lines-casing", type: "line", source: "lc-lines", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#000", "line-width": 8, "line-opacity": 0.45 } });
     map.addLayer({ id: "lc-lines", type: "line", source: "lc-lines", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": ["get", "color"], "line-width": 4.5 } });

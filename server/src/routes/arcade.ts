@@ -8,7 +8,7 @@ import { z } from "zod";
 import { getDb } from "../db/index.js";
 import { requireUser } from "../auth.js";
 import { schoolById } from "../data/schools.js";
-import { ROUTE_IDS } from "../lib/static.js";
+import { RUNNABLE_ROUTE_IDS } from "../lib/static.js";
 import { HttpError, firstName, newId, rateLimit } from "../lib/util.js";
 
 export const arcadeRoutes = Router();
@@ -28,7 +28,7 @@ arcadeRoutes.post("/arcade/score", requireUser, async (req, res) => {
       durationMs: z.number().int().min(1000).max(60 * 60_000),
     })
     .parse(req.body);
-  if (!ROUTE_IDS.includes(b.routeId)) throw new HttpError(400, "Unknown line");
+  if (!RUNNABLE_ROUTE_IDS.includes(b.routeId)) throw new HttpError(400, "Unknown line");
   if (!rateLimit(`arcade:${req.user.id}`, 30, 10 * 60_000)) throw new HttpError(429, "Too many runs, take a break");
   const distance = Math.min(b.distance, (b.durationMs / 1000) * MAX_SPEED);
   const tokens = Math.min(b.tokens, Math.floor(distance / 6));
