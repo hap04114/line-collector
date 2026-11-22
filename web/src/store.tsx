@@ -6,7 +6,7 @@ export interface Station { id: string; name: string; lat: number; lon: number; r
 export interface Route { id: string; name: string; short: string; color: string; stopIds: string[] }
 export interface Neighborhood { id: string; name: string; kind: string; blurb: string; icon: string; color: string }
 export interface Config {
-  demoMode: boolean; devShowMagicLink: boolean; gemini: boolean; geminiModel: string | null; solana: boolean; database: string; timescale: boolean;
+  demoMode: boolean; devShowMagicLink: boolean; gemini: boolean; geminiModel: string | null; solana: boolean; googleTilesKey?: string | null; database: string; timescale: boolean;
   schools: School[]; personas: { key: string; name: string; school: string }[];
 }
 export interface Statics {

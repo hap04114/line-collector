@@ -10,6 +10,9 @@ import * as maplibregl from "maplibre-gl";
 import { MercatorCoordinate, type CustomLayerInterface, type Map as MLMap } from "maplibre-gl";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+import { TilesRenderer } from "3d-tiles-renderer";
+import { GoogleCloudAuthPlugin, GLTFExtensionsPlugin, TilesFadePlugin } from "3d-tiles-renderer/plugins";
 import { api } from "../api";
 import { LinePill, useStore } from "../store";
 
@@ -177,9 +180,9 @@ function label(text: string, bg: string, fg = "#fff") {
 export function StreetRunner({ onClose }: { onClose: () => void }) {
   const s = useStore();
   const homeStations = s.config?.schools.find((c) => c.id === s.me?.user?.school?.id)?.homeStations ?? [];
-  const [look, setLook] = useState<"real" | "color">(() => {
+  const [look, setLook] = useState<"real" | "color" | "photo">(() => {
     try {
-      return (localStorage.getItem("lc-runner-look") as "real" | "color") || "real";
+      return (localStorage.getItem("lc-runner-look") as "real" | "color" | "photo") || "real";
     } catch {
       return "real";
     }
@@ -190,6 +193,8 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
   const autoStart = useRef(false);
   const [hud, setHud] = useState({ score: 0, tokens: 0, distance: 0, next: "", street: "", shield: 0, bike: 0, bikeCd: 0, kmh: 0, count: 0, clock: "", eta: "" });
   const [flash, setFlash] = useState<string | null>(null);
+  const [credit, setCredit] = useState<{ logo: string; text: string } | null>(null);
+  const tilesKey = s.config?.googleTilesKey ?? null;
   const [result, setResult] = useState<any>(null);
   const [top, setTop] = useState<any>(null);
   const el = useRef<HTMLDivElement>(null);
@@ -239,11 +244,13 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
     const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(0.3, 1, 0.4); scene.add(sun);
     const schoolColor = new THREE.Color(s.me?.user?.school?.color ?? "#c6ff3d");
     const lineColor = new THREE.Color(route.color);
-    const SCALE = 3.2; // game pieces are drawn larger than life so they read at street-level zoom
+    // Photoreal: Google's photorealistic 3D Tiles of real Boston, drawn by three.js on its own canvas over the map
+    const photo = look === "photo" && !!tilesKey;
+    const SCALE = photo ? 1.25 : 3.2; // game pieces are drawn larger than life so they read at street-level zoom
 
     // ---- the runner: a big cartoon student with a real run cycle, and a blue bike power-up ----
     // local axes: +y up, +z is the direction of travel (the camera sees the runner's back)
-    const RSCALE = 4.6;
+    const RSCALE = photo ? 2.1 : 4.6;
     const mat = (color: THREE.ColorRepresentation, extra: THREE.MeshStandardMaterialParameters = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.55, ...extra });
     const skin = mat(0xf2c9a0), shirt = mat(schoolColor), pants = mat(0x2b3a55), shoeMat = mat(0xffffff), soleMat = mat(lineColor), capMat = mat(lineColor), hairMat = mat(0x3b2a20), packMat = mat(0xff8a3d), packPocket = mat(0xffb36b);
     // a capsule hanging down from its pivot, for arms and legs
@@ -358,7 +365,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
     const acts: Record<string, THREE.AnimationAction> = {};
     let cur = "";
     let disposed = false;
-    if (look === "real") {
+    if (look !== "color") {
       const loader = new GLTFLoader();
       Promise.all([loader.loadAsync("/models/Michelle.glb"), loader.loadAsync("/models/Soldier.glb")])
         .then(([person, moves]) => {
@@ -560,11 +567,12 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
           const ahead = runS - state.run;
           sg.mesh.visible = ahead > -30 && ahead < 500;
           if (!sg.mesh.visible) continue;
-          const w = runToLngLat(runS, 9);
+          // photoreal streets are tighter than the cartoon map, so signs sit farther out and smaller
+          const w = runToLngLat(runS, photo ? 14 : 9);
           const p = local(w.lon, w.lat);
-          sg.mesh.position.set(p.x, 9, p.z);
+          sg.mesh.position.set(p.x, photo ? 6.5 : 9, p.z);
           sg.mesh.rotation.y = -Math.atan2(w.e, w.n);
-          sg.mesh.scale.setScalar(1.6);
+          sg.mesh.scale.setScalar(photo ? 0.85 : 1.6);
           if (!sg.counted && ahead < 0 && started) {
             sg.counted = true; state.stations++;
             setFlash(`🚉 ${sg.name} +50`); setTimeout(() => setFlash(null), 1300);
@@ -578,17 +586,18 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
           const ahead = runS - state.run;
           mk.mesh.visible = ahead > -40 && ahead < 650;
           if (!mk.mesh.visible) continue;
-          const w = runToLngLat(runS, (fw ? mk.side : -mk.side) * 24);
+          const w = runToLngLat(runS, (fw ? mk.side : -mk.side) * (photo ? 30 : 24));
           const p = local(w.lon, w.lat);
-          mk.mesh.position.set(p.x, 20, p.z);
+          mk.mesh.position.set(p.x, photo ? 16 : 20, p.z);
           mk.mesh.rotation.y = -Math.atan2(w.e, w.n);
-          mk.mesh.scale.setScalar(2.2);
+          mk.mesh.scale.setScalar(photo ? 1.3 : 2.2);
           if (!mk.shown && ahead < 120 && started) {
             mk.shown = true;
             setFlash(`📍 ${mk.name}`); setTimeout(() => setFlash(null), 1400);
           }
           if (ahead > 200) mk.shown = false;
         }
+        if (photo) return;
         const m = new THREE.Matrix4().fromArray(args?.defaultProjectionData?.mainMatrix ?? args?.modelViewProjectionMatrix);
         const l = new THREE.Matrix4().makeTranslation(origin.x, origin.y, origin.z).scale(new THREE.Vector3(unit, -unit, unit)).multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2));
         camera.projectionMatrix = m.multiply(l);
@@ -596,6 +605,76 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
         r.resetState(); r.render(scene, camera);
       },
     };
+    // ---- Photoreal: Google Photorealistic 3D Tiles ---------------------------------------------
+    const lon0 = start.lon, lat0 = start.lat;
+    const world = new THREE.Group(); // holds the tiles; slid each frame so the runner stays at the origin
+    let photoR: THREE.WebGLRenderer | null = null, pcam: THREE.PerspectiveCamera | null = null, tiles: TilesRenderer | null = null;
+    let photoCanvas: HTMLCanvasElement | null = null;
+    let groundY = -26, groundFound = false, groundT = 0, creditT = 0; // Boston streets sit ~26 m under the WGS84 ellipsoid
+    const ray = new THREE.Raycaster(), down = new THREE.Vector3(0, -1, 0), rayFrom = new THREE.Vector3(0, 400, 0);
+    const onResize = () => {
+      if (!photoR || !pcam || !el.current) return;
+      photoR.setSize(el.current.clientWidth, el.current.clientHeight, false);
+      pcam.aspect = el.current.clientWidth / Math.max(1, el.current.clientHeight);
+      pcam.updateProjectionMatrix();
+    };
+    if (photo) {
+      photoCanvas = document.createElement("canvas");
+      photoCanvas.className = "sr-photo";
+      el.current.appendChild(photoCanvas);
+      photoR = new THREE.WebGLRenderer({ canvas: photoCanvas, antialias: true, powerPreference: "high-performance" });
+      photoR.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      pcam = new THREE.PerspectiveCamera(60, 1, 1, 6000);
+      onResize();
+      scene.background = new THREE.Color(0xb9d2ea);
+      scene.fog = new THREE.Fog(0xd9e0e6, 650, 3000);
+      tiles = new TilesRenderer();
+      tiles.registerPlugin(new GoogleCloudAuthPlugin({ apiToken: tilesKey!, autoRefreshToken: true }));
+      tiles.registerPlugin(new GLTFExtensionsPlugin({ dracoLoader: new DRACOLoader().setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.7/") }));
+      tiles.registerPlugin(new TilesFadePlugin());
+      // Earth-centered coordinates -> local meters at the start (x east, y up, -z north), like the rest of the game
+      const enu = tiles.ellipsoid.getEastNorthUpFrame((lat0 * Math.PI) / 180, (lon0 * Math.PI) / 180, 0, new THREE.Matrix4());
+      new THREE.Matrix4().makeRotationX(-Math.PI / 2).multiply(enu.invert()).decompose(tiles.group.position, tiles.group.quaternion, tiles.group.scale);
+      world.add(tiles.group);
+      scene.add(world);
+      tiles.setCamera(pcam);
+      tiles.setResolutionFromRenderer(pcam, photoR);
+      window.addEventListener("resize", onResize);
+    }
+    const renderPhoto = (dt: number) => {
+      if (!photoR || !pcam || !tiles) return;
+      (layer as any).renderPieces_unused(null, null); // place runner, trains, coins and signs
+      const me = runToLngLat(state.run, state.x);
+      // street level under the runner: the lowest surface straight down (higher hits are roofs and trees)
+      groundT += dt;
+      if (groundT > 0.35) {
+        groundT = 0;
+        world.updateMatrixWorld(true);
+        ray.set(rayFrom, down); ray.far = 1200;
+        const hits = ray.intersectObject(tiles.group, true);
+        if (hits.length) {
+          const g = hits[hits.length - 1].point.y - world.position.y;
+          if (!groundFound || Math.abs(g - groundY) < 30) { groundY = groundFound ? groundY + (g - groundY) * 0.6 : g; groundFound = true; }
+        }
+      }
+      world.position.set(-(me.lon - lon0) * mLon(lat0), -groundY, (me.lat - lat0) * M_LAT);
+      // third-person camera behind and above the runner
+      const b = (state.bearing * Math.PI) / 180, fx = Math.sin(b), fz = -Math.cos(b), rx = Math.cos(b), rz = Math.sin(b);
+      const side = -state.x * 0.5;
+      // high enough to see over the real street trees, like a game chase camera
+      pcam.position.set(-fx * 16 + rx * side, 12, -fz * 16 + rz * side);
+      pcam.lookAt(fx * 20 + rx * side, 1, fz * 20 + rz * side);
+      pcam.updateMatrixWorld();
+      tiles.update();
+      photoR.render(scene, pcam);
+      creditT += dt;
+      if (creditT > 1) {
+        creditT = 0;
+        const at = tiles.getAttributions();
+        setCredit({ logo: String(at.find((a) => a.type === "image")?.value ?? ""), text: at.filter((a) => a.type === "string").map((a) => String(a.value)).join(" ") });
+      }
+    };
+
     map.on("load", () => {
       mapReady = true;
       goAt = performance.now() + 3000;
@@ -621,12 +700,12 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
           ["match", ["%", ["floor", ["+", ["*", h, 3.7], ["*", ["coalesce", ["get", "render_min_height"], 0], 1.3]]], 8],
             0, "#ff9ebb", 1, "#ffd166", 2, "#7fe0d0", 3, "#9ccfff", 4, "#ffb38a", 5, "#c7b3ff", 6, "#b9f28c", 7, "#ffe08a", "#ffc4d6"],
         ];
-        map.setPaintProperty("building-3d", "fill-extrusion-color", (look === "real" ? realColor : candy) as any);
+        map.setPaintProperty("building-3d", "fill-extrusion-color", (look !== "color" ? realColor : candy) as any);
         map.setPaintProperty("building-3d", "fill-extrusion-opacity", 1);
         map.setPaintProperty("building-3d", "fill-extrusion-vertical-gradient", true);
       }
       for (const l of map.getStyle().layers) if (/shield|oneway/.test(l.id)) map.setLayoutProperty(l.id, "visibility", "none");
-      if (look === "real") {
+      if (look !== "color") {
         // no flat map icons or labels; asphalt roads, concrete sidewalks, real greens and water
         for (const l of map.getStyle().layers) {
           try {
@@ -650,12 +729,12 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
         } as any, "building");
       }
       try {
-        (map as any).setSky(look === "real"
+        (map as any).setSky(look !== "color"
           ? { "sky-color": "#6fa3d8", "horizon-color": "#f0d6ae", "fog-color": "#e6d3b8", "sky-horizon-blend": 0.6, "horizon-fog-blend": 0.7, "fog-ground-blend": 0.62, "atmosphere-blend": 0.75 }
           : { "sky-color": "#6fb1ff", "horizon-color": "#ffd6a3", "fog-color": "#ffe6c7", "sky-horizon-blend": 0.55, "horizon-fog-blend": 0.6, "fog-ground-blend": 0.35, "atmosphere-blend": 0.8 });
       } catch { /* older style spec */ }
       try {
-        map.setLight(look === "real"
+        map.setLight(look !== "color"
           ? { anchor: "map", color: "#fff1dc", intensity: 0.5, position: [1.5, 235, 38] } as any
           : { anchor: "viewport", color: "#fff4e0", intensity: 0.45, position: [1.2, 220, 32] } as any);
       } catch { /* ignore */ }
@@ -663,15 +742,15 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       const below = map.getStyle().layers.find((x) => x.type === "symbol")?.id;
       const W = (a: number, b: number) => ["interpolate", ["exponential", 2], ["zoom"], 15, a, 20, b] as any;
       map.addSource("route", { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: coords } } as any });
-      map.addLayer({ id: "route-glow", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": route.color, "line-width": W(8, 150), "line-opacity": look === "real" ? 0 : 0.35, "line-blur": W(2, 30) } }, below);
+      map.addLayer({ id: "route-glow", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": route.color, "line-width": W(8, 150), "line-opacity": look !== "color" ? 0 : 0.35, "line-blur": W(2, 30) } }, below);
       if (!map.hasImage("ballast")) map.addImage("ballast", ballastImage());
-      map.addLayer({ id: "route-bed", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: look === "real" ? { "line-pattern": "ballast", "line-width": W(5, 110) } : { "line-color": "#4a4f5c", "line-width": W(5, 110) } }, below);
+      map.addLayer({ id: "route-bed", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: look !== "color" ? { "line-pattern": "ballast", "line-width": W(5, 110) } : { "line-color": "#4a4f5c", "line-width": W(5, 110) } }, below);
       map.addLayer({ id: "route-sleepers", type: "line", source: "route", paint: { "line-color": "#7a634c", "line-width": W(4, 96), "line-dasharray": [0.08, 0.32] } }, below);
       for (const off of [-1, 1]) for (const lane of [-36, 0, 36]) {
         map.addLayer({ id: `rail-${off}-${lane}`, type: "line", source: "route", paint: { "line-color": "#e8edf3", "line-width": W(0.4, 3), "line-offset": W((lane + off * 8) / 32, lane + off * 8) } }, below);
       }
       // game pieces (runner, coins, obstacles, station signs) draw on top of everything
-      map.addLayer(layer);
+      if (!photo) map.addLayer(layer);
     });
 
     controls.current = {
@@ -806,10 +885,15 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       let d = target - state.bearing;
       d = ((d + 540) % 360) - 180;
       state.bearing += d * Math.min(1, dt * 3);
-      const real = look === "real";
+      const real = look !== "color";
       const [clon, clat] = offset(me.lon, me.lat, me.e, me.n, state.x * 0.5, real ? 15 : 22);
-      map.jumpTo({ center: [clon, clat], bearing: state.bearing, pitch: real ? 80 : 77, zoom: real ? 19.75 : 19.35 });
-      map.triggerRepaint();
+      if (photo) {
+        renderPhoto(dt);
+        if (streetT > 0.6) map.jumpTo({ center: [clon, clat], bearing: state.bearing, pitch: 60, zoom: 18 });
+      } else {
+        map.jumpTo({ center: [clon, clat], bearing: state.bearing, pitch: real ? 80 : 77, zoom: real ? 19.75 : 19.35 });
+        map.triggerRepaint();
+      }
 
       streetT += dt;
       if (streetT > 0.8 && map.isStyleLoaded()) {
@@ -821,7 +905,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       hudT += dt;
       if (hudT > 0.1) {
         hudT = 0;
-        if (look === "real") drawMini(me, state.bearing);
+        if (look !== "color") drawMini(me, state.bearing);
         const k = Math.floor((startS + state.run) / L), fw = k % 2 === 0;
         const nextSt = signs.map((sg) => ({ name: sg.name, ahead: k * L - startS + (fw ? sg.s : L - sg.s) - state.run })).filter((x) => x.ahead > 0).sort((a, b) => a.ahead - b.ahead)[0];
         setHud({ score: Math.round(state.run) + state.tokens * 10 + state.stations * 50, tokens: state.tokens, distance: Math.round(state.run), next: nextSt ? `${nextSt.name} · ${Math.round(nextSt.ahead)} m` : "", street,
@@ -838,11 +922,15 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       host.removeEventListener("touchend", te);
       host.removeEventListener("dblclick", dbl);
       disposed = true;
+      window.removeEventListener("resize", onResize);
+      tiles?.dispose();
+      photoR?.dispose();
+      photoCanvas?.remove();
       mixer?.stopAllAction();
       map.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [line, runKey, s.statics, look]);
+  }, [line, runKey, s.statics, look, tilesKey]);
 
   const start = () => {
     autoStart.current = true;
@@ -852,7 +940,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className={`runner${look === "real" ? " real" : ""}`}>
+    <div className={`runner${look !== "color" ? " real" : ""}`}>
       <div ref={el} className="runner-stage" />
       {phase === "playing" && <div className={`speedlines${hud.bike > 0 ? " bike" : ""}`} style={{ opacity: hud.bike > 0 ? 0.9 : Math.max(0, Math.min(0.85, (hud.kmh - 70) / 90)) }} />}
       <div className="runner-top">
@@ -875,8 +963,11 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
         <div className="runner-next">{hud.street && <>📍 <b>{hud.street}</b></>}{hud.street && hud.next && " · "}{hud.next && <>Next: <b>{hud.next}</b></>}{hud.eta && <span className="sr-eta"> 🕒 arr {hud.eta}</span>}</div>
       )}
       {flash && <div className="runner-flash">{flash}</div>}
+      {look === "photo" && tilesKey && credit && (
+        <div className="sr-google">{credit.logo && <img src={credit.logo} alt="Google" />}<span>{credit.text}</span></div>
+      )}
       {phase === "playing" && hud.clock && <div className="sr-clock">{hud.clock}</div>}
-      {phase === "playing" && look === "real" && <canvas ref={mini} className="sr-mini" width={200} height={200} aria-label="Minimap" />}
+      {phase === "playing" && look !== "color" && <canvas ref={mini} className="sr-mini" width={200} height={200} aria-label="Minimap" />}
       {phase === "playing" && (
         <div className="runner-pad">
           <button onClick={() => controls.current.left()} aria-label="Left">◀</button>
@@ -908,9 +999,9 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
             </>
           )}
           <div className="seg" style={{ padding: 3 }}>
-            {(["real", "color"] as const).map((v) => (
+            {(tilesKey ? (["photo", "real", "color"] as const) : (["real", "color"] as const)).map((v) => (
               <button key={v} className={look === v ? "on" : ""} onClick={() => { autoStart.current = false; setLook(v); setPhase("ready"); try { localStorage.setItem("lc-runner-look", v); } catch { /* ignore */ } }}>
-                {v === "real" ? "🏙️ Real city" : "🍬 Colorful"}
+                {v === "photo" ? "📸 Photoreal" : v === "real" ? "🏙️ Real city" : "🍬 Colorful"}
               </button>
             ))}
           </div>
