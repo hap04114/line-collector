@@ -1,0 +1,45 @@
+# Vultr: `docker compose up -d --build` with DOMAIN and DATABASE_URL (Tiger Cloud) in .env.
+# Caddy gets HTTPS certificates automatically; HTTPS is what lets phone GPS work.
+# Local TimescaleDB instead of Tiger Cloud: `docker compose --profile local-db up -d`
+#   and set DATABASE_URL=postgres://postgres:linecollector@db:5432/linecollector
+services:
+  app:
+    build: .
+    env_file: .env
+    environment:
+      PUBLIC_URL: https://${DOMAIN:-localhost}
+    volumes:
+      - app-data:/app/.data
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.8
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+
+  db:
+    profiles: ["local-db"]
+    image: timescale/timescaledb:latest-pg17
+    environment:
+      POSTGRES_PASSWORD: linecollector
+      POSTGRES_DB: linecollector
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  app-data:
+  caddy-data:
+  caddy-config:
+  db-data:
