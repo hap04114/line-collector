@@ -44,7 +44,82 @@ function trainTexture(color: string) {
   for (let x = 14; x < 256; x += 42) { g.fillRect(x, 30, 22, 14); }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
-interface Thing { s: number; lane: number; kind: Kind; alive: boolean; mesh: THREE.Object3D; len: number; h: number }
+interface Thing { s: number; lane: number; kind: Kind; alive: boolean; mesh: THREE.Object3D; len: number; h: number; v?: number }
+
+const canvasTex = (c: HTMLCanvasElement) => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
+
+/** The cab end of a T car: windshield, amber destination sign, headlights, in the line's color. */
+function trainFront(color: string, dest: string) {
+  const c = document.createElement("canvas");
+  c.width = 256; c.height = 320;
+  const g = c.getContext("2d")!;
+  g.fillStyle = color; g.fillRect(0, 0, 256, 320);
+  g.fillStyle = "rgba(0,0,0,.18)"; g.fillRect(0, 0, 256, 18);
+  // destination sign
+  g.fillStyle = "#101010"; g.beginPath(); g.roundRect(34, 26, 188, 34, 6); g.fill();
+  g.fillStyle = "#ffb627"; let size = 22; g.font = `800 ${size}px Inter, system-ui, sans-serif`;
+  while (g.measureText(dest).width > 176 && size > 10) { size -= 1; g.font = `800 ${size}px Inter, system-ui, sans-serif`; }
+  g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(dest, 128, 44);
+  // windshield, split in two with a door window
+  g.fillStyle = "#1b2433";
+  g.beginPath(); g.roundRect(18, 72, 70, 92, 8); g.fill();
+  g.beginPath(); g.roundRect(98, 72, 60, 110, 6); g.fill();
+  g.beginPath(); g.roundRect(168, 72, 70, 92, 8); g.fill();
+  g.fillStyle = "rgba(160,200,255,.25)"; g.fillRect(24, 78, 22, 80); g.fillRect(174, 78, 22, 80);
+  // white band, headlights, coupler
+  g.fillStyle = "#f4f4f4"; g.fillRect(0, 214, 256, 14);
+  for (const x of [46, 210]) {
+    g.fillStyle = "#fff9e0"; g.beginPath(); g.arc(x, 252, 15, 0, Math.PI * 2); g.fill();
+    g.fillStyle = "rgba(255,235,160,.6)"; g.beginPath(); g.arc(x, 252, 22, 0, Math.PI * 2); g.fill();
+  }
+  g.fillStyle = "#2a2a2a"; g.fillRect(96, 276, 64, 30);
+  return canvasTex(c);
+}
+
+/** A blue station information board with a strip map of the line: previous stop, you are here, next stop. */
+function stationBoard(name: string, prev: string, next: string, color: string, lineName: string) {
+  const c = document.createElement("canvas");
+  c.width = 640; c.height = 320;
+  const g = c.getContext("2d")!;
+  const bg = g.createLinearGradient(0, 0, 0, 320); bg.addColorStop(0, "#1d4a8f"); bg.addColorStop(1, "#13305e");
+  g.fillStyle = bg; g.beginPath(); g.roundRect(4, 4, 632, 312, 18); g.fill();
+  g.lineWidth = 6; g.strokeStyle = "#0b1220"; g.stroke();
+  // diagonal stripes in the line color, top right
+  g.save(); g.beginPath(); g.roundRect(4, 4, 632, 312, 18); g.clip();
+  for (let i = 0; i < 3; i++) { g.fillStyle = i === 1 ? "#ffffff" : color; g.beginPath(); g.moveTo(520 + i * 26, 4); g.lineTo(546 + i * 26, 4); g.lineTo(446 + i * 26, 120); g.lineTo(420 + i * 26, 120); g.fill(); }
+  g.restore();
+  const fit = (text: string, max: number, start: number, weight = 800) => { let s = start; g.font = `${weight} ${s}px Inter, system-ui, sans-serif`; while (g.measureText(text).width > max && s > 12) { s -= 2; g.font = `${weight} ${s}px Inter, system-ui, sans-serif`; } };
+  g.fillStyle = "#fff"; g.textBaseline = "alphabetic"; g.textAlign = "left";
+  fit(name, 420, 46); g.fillText(name, 30, 66);
+  g.fillStyle = "#b9cdf0"; fit(`${lineName} · Boston`, 420, 22, 600); g.fillText(`${lineName} · Boston`, 30, 98);
+  // strip map
+  const y = 196;
+  g.strokeStyle = color; g.lineWidth = 14; g.lineCap = "round"; g.beginPath(); g.moveTo(70, y); g.lineTo(570, y); g.stroke();
+  const stop = (x: number, label: string, here: boolean) => {
+    g.fillStyle = here ? "#fff" : "#13305e"; g.strokeStyle = here ? color : "#fff"; g.lineWidth = here ? 10 : 6;
+    g.beginPath(); g.arc(x, y, here ? 22 : 14, 0, Math.PI * 2); g.fill(); g.stroke();
+    if (!label) return;
+    g.fillStyle = here ? "#ffd84a" : "#dfe8f7"; g.textAlign = "center";
+    fit(label, 190, here ? 24 : 20, here ? 800 : 600); g.fillText(label, x, y + (here ? 56 : 48));
+  };
+  stop(110, prev, false); stop(530, next, false); stop(320, "YOU ARE HERE", true);
+  g.fillStyle = "#9fb6dd"; g.font = "600 18px Inter, system-ui, sans-serif"; g.textAlign = "right"; g.fillText("Live times in the app", 610, 300);
+  return canvasTex(c);
+}
+
+/** Gravel track ballast as a repeating map pattern. */
+function ballastImage() {
+  const c = document.createElement("canvas");
+  c.width = 64; c.height = 64;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#77716a"; g.fillRect(0, 0, 64, 64);
+  for (let i = 0; i < 420; i++) {
+    const v = 90 + Math.floor(Math.random() * 90);
+    g.fillStyle = `rgb(${v},${v - 6},${v - 12})`;
+    g.beginPath(); g.ellipse(Math.random() * 64, Math.random() * 64, 1 + Math.random() * 2.2, 0.8 + Math.random() * 1.6, Math.random() * 3, 0, Math.PI * 2); g.fill();
+  }
+  return g.getImageData(0, 0, 64, 64);
+}
 
 function buildPath(coords: [number, number][]): Path {
   const cum = [0];
@@ -112,28 +187,30 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
   const [phase, setPhase] = useState<"ready" | "playing" | "over">("ready");
   const [runKey, setRunKey] = useState(0);
   const autoStart = useRef(false);
-  const [hud, setHud] = useState({ score: 0, tokens: 0, distance: 0, next: "", street: "", shield: 0, bike: 0, bikeCd: 0, kmh: 0, count: 0 });
+  const [hud, setHud] = useState({ score: 0, tokens: 0, distance: 0, next: "", street: "", shield: 0, bike: 0, bikeCd: 0, kmh: 0, count: 0, clock: "", eta: "" });
   const [flash, setFlash] = useState<string | null>(null);
   const [result, setResult] = useState<any>(null);
   const [top, setTop] = useState<any>(null);
   const el = useRef<HTMLDivElement>(null);
   const controls = useRef({ left: () => {}, right: () => {}, jump: () => {}, bike: () => {} });
-  const route = s.routeById.get(line);
+  const cr = s.statics?.commuter;
+  const route = s.routeById.get(line) ?? cr?.routes.find((r) => r.id === line);
 
   useEffect(() => { api.get(`/arcade/top?line=${line}`).then(setTop).catch(() => {}); }, [line, result]);
 
   useEffect(() => {
     if (!el.current || !route || !s.statics) return;
     // the line's longest real shape, oriented to start near your home station
-    const shapes = s.statics.shapes.features.filter((f: any) => f.properties.routeId === line);
+    const shapes = [...s.statics.shapes.features, ...(cr?.shapes.features ?? [])].filter((f: any) => f.properties.routeId === line);
     let coords: [number, number][] = shapes.reduce((a: any, f: any) => (f.geometry.coordinates.length > a.length ? f.geometry.coordinates : a), []);
     let path = buildPath(coords);
-    const stations = route.stopIds.map((id) => s.stationById.get(id)!).filter(Boolean);
+    const stations = route.stopIds.map((id) => s.stationById.get(id) ?? cr?.stations.find((x) => x.id === id)!).filter(Boolean);
     const first = project(path, stations[0].lon, stations[0].lat);
     if (first.s > path.len / 2) { coords = [...coords].reverse(); path = buildPath(coords); }
     const stops = stations.map((st) => ({ name: st.name, ...project(path, st.lon, st.lat) })).filter((x) => x.d < 400).sort((a, b) => a.s - b.s);
     const home = stops.find((x) => stations.find((st) => st.name === x.name && homeStations.includes(st.id)));
-    const startS = Math.max(0, (home?.s ?? 0) - 80);
+    // Commuter Rail starts at a downtown terminal; begin ~300 m out so you are not inside the train shed
+    const startS = Math.max(0, (home?.s ?? (line.startsWith("CR-") ? 380 : 0)) - 80);
     const L = path.len;
     const linePos = (r: number) => { const u = startS + r, k = Math.floor(u / L), w = u - k * L; return k % 2 === 0 ? { p: w, dir: 1 } : { p: L - w, dir: -1 }; };
 
@@ -248,14 +325,29 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       barrier: new THREE.MeshStandardMaterial({ map: label("DELAY", "#ff5a5f") }),
       cone: new THREE.MeshStandardMaterial({ color: 0xff7a00 }),
       bus: new THREE.MeshStandardMaterial({ color: 0xffd23f }),
-      train: new THREE.MeshStandardMaterial({ map: trainTexture(route.color), emissive: 0x222222, roughness: 0.4, metalness: 0.2 }),
+      // box faces: +x, -x sides; +y roof, -y floor; +z, -z cab ends
+      train: (() => {
+        const side = new THREE.MeshStandardMaterial({ map: trainTexture(route.color), emissive: 0x222222, roughness: 0.4, metalness: 0.2 });
+        const roof = new THREE.MeshStandardMaterial({ color: 0x9aa3ad, roughness: 0.5, metalness: 0.4 });
+        const cab = new THREE.MeshStandardMaterial({ map: trainFront(route.color, stops[stops.length - 1]?.name ?? route.short), emissive: 0x222222, roughness: 0.35, metalness: 0.2 });
+        return [side, side, roof, roof, cab, cab];
+      })(),
       token: new THREE.MeshStandardMaterial({ color: 0xffd84a, emissive: 0xc79100, emissiveIntensity: 0.9, metalness: 0.6, roughness: 0.25 }),
       shield: new THREE.MeshStandardMaterial({ color: 0x7ad7ff, emissive: 0x1a5070 }),
     };
+    // headlight glow and the light they throw on the track, added to every train (box is 2.8 × 3.4 × 22, +z faces you)
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0xfff1b8, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending });
+    const beamMat = new THREE.MeshBasicMaterial({ color: 0xffe9a0, transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    const headlights: THREE.Object3D[] = [];
+    for (const x of [-0.92, 0.92]) {
+      const glow = new THREE.Mesh(new THREE.CircleGeometry(0.42, 20), glowMat); glow.position.set(x, -1.02, 11.03); headlights.push(glow);
+    }
+    const beam = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 12), beamMat); beam.rotation.x = -Math.PI / 2; beam.position.set(0, -1.66, 17); headlights.push(beam);
     const things: Thing[] = [];
     const signs: { s: number; mesh: THREE.Mesh; name: string; counted: boolean }[] = [];
-    for (const st of stops) {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(9, 2), new THREE.MeshBasicMaterial({ map: label(`🚉 ${st.name}`, route.color), side: THREE.DoubleSide, transparent: true }));
+    for (let i = 0; i < stops.length; i++) {
+      const st = stops[i];
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(10, 5), new THREE.MeshBasicMaterial({ map: stationBoard(st.name, stops[i - 1]?.name ?? "", stops[i + 1]?.name ?? "", route.color, route.name), side: THREE.DoubleSide, transparent: true }));
       scene.add(m);
       signs.push({ s: st.s, mesh: m, name: st.name, counted: false });
     }
@@ -276,15 +368,30 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
     let mapReady = false;
     let started = autoStart.current;
     let goAt = Infinity; // 3-2-1 countdown ends here
+    // fairness: an oncoming train sweeps back over rows already placed, so it may only use a lane that no
+    // upcoming row leaves free, and new rows keep their free lane off any lane an oncoming train is in
+    const rows: { s: number; free: number }[] = [];
+    const oncomingLanes = () => new Set(things.filter((t) => t.alive && t.v).map((t) => t.lane));
     const spawnRow = (r: number) => {
-      const free = Math.floor(Math.random() * 3);
+      const busy = oncomingLanes();
+      const options = [0, 1, 2].filter((l) => !busy.has(l));
+      const free = options.length ? options[Math.floor(Math.random() * options.length)] : Math.floor(Math.random() * 3);
+      rows.push({ s: r, free });
+      while (rows.length && rows[0].s < state.run - 20) rows.shift();
       for (let lane = 0; lane < 3; lane++) {
         if (lane === free) continue;
         const q = Math.random();
         const kind: Kind | null = q < 0.2 ? "train" : q < 0.32 ? "bus" : q < 0.6 ? "barrier" : q < 0.72 ? "cone" : null;
         if (!kind) continue;
         const mesh = new THREE.Mesh(geo[kind], mats[kind]); mesh.scale.setScalar(SCALE); scene.add(mesh);
-        things.push({ s: r, lane, kind, alive: true, mesh, len: kind === "train" ? 22 : kind === "bus" ? 9 : 0.8, h: kind === "barrier" ? 1 : kind === "cone" ? 1.1 : kind === "train" ? 3.4 : 3 });
+        // some trains are coming at you, headlights on
+        let v = 0;
+        if (kind === "train") {
+          mesh.add(...headlights.map((h) => h.clone()));
+          const laneIsSomeonesExit = rows.some((rw) => rw.s > state.run - 5 && rw.free === lane);
+          if (Math.random() < 0.45 && state.run > 150 && !laneIsSomeonesExit) v = 9;
+        }
+        things.push({ s: r + (v ? 60 : 0), lane, kind, alive: true, mesh, v, len: kind === "train" ? 22 : kind === "bus" ? 9 : 0.8, h: kind === "barrier" ? 1 : kind === "cone" ? 1.1 : kind === "train" ? 3.4 : 3 });
       }
       const extra: Kind = Math.random() < 0.06 && state.run > 400 ? "shield" : "token";
       for (let i = 0; i < (extra === "token" ? 6 : 1); i++) {
@@ -441,7 +548,8 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       const W = (a: number, b: number) => ["interpolate", ["exponential", 2], ["zoom"], 15, a, 20, b] as any;
       map.addSource("route", { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: coords } } as any });
       map.addLayer({ id: "route-glow", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": route.color, "line-width": W(8, 150), "line-opacity": look === "real" ? 0.18 : 0.35, "line-blur": W(2, 30) } }, below);
-      map.addLayer({ id: "route-bed", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": look === "real" ? "#6f6a63" : "#4a4f5c", "line-width": W(5, 110) } }, below);
+      if (!map.hasImage("ballast")) map.addImage("ballast", ballastImage());
+      map.addLayer({ id: "route-bed", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: look === "real" ? { "line-pattern": "ballast", "line-width": W(5, 110) } : { "line-color": "#4a4f5c", "line-width": W(5, 110) } }, below);
       map.addLayer({ id: "route-sleepers", type: "line", source: "route", paint: { "line-color": "#7a634c", "line-width": W(4, 96), "line-dasharray": [0.08, 0.32] } }, below);
       for (const off of [-1, 1]) for (const lane of [-36, 0, 36]) {
         map.addLayer({ id: `rail-${off}-${lane}`, type: "line", source: "route", paint: { "line-color": "#e8edf3", "line-width": W(0.4, 3), "line-offset": W((lane + off * 8) / 32, lane + off * 8) } }, below);
@@ -516,6 +624,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
         while (state.nextSpawn < state.run + 220) { spawnRow(state.nextSpawn); state.nextSpawn += 30 + Math.random() * 16 + state.speed * 0.25; }
         for (const t of things) {
           if (!t.alive) continue;
+          if (t.v) t.s -= t.v * dt;
           if (t.s < state.run - 15) { t.alive = false; scene.remove(t.mesh); continue; }
           if (t.lane !== state.lane || Math.abs(state.x - LANES[t.lane]) > 1.6) continue;
           const dz = Math.abs(t.s - state.run);
@@ -554,7 +663,9 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
         hudT = 0;
         const k = Math.floor((startS + state.run) / L), fw = k % 2 === 0;
         const nextSt = signs.map((sg) => ({ name: sg.name, ahead: k * L - startS + (fw ? sg.s : L - sg.s) - state.run })).filter((x) => x.ahead > 0).sort((a, b) => a.ahead - b.ahead)[0];
-        setHud({ score: Math.round(state.run) + state.tokens * 10 + state.stations * 50, tokens: state.tokens, distance: Math.round(state.run), next: nextSt ? `${nextSt.name} · ${Math.round(nextSt.ahead)} m` : "", street, shield: Math.ceil(state.shield), bike: Math.ceil(state.bike), bikeCd: state.bike > 0 ? 0 : Math.ceil(state.bikeCd), kmh: Math.round(state.speed * (state.bike > 0 ? 1.3 : 1) * 3.6), count: mapReady && started ? Math.ceil((goAt - performance.now()) / 1000) : 9 });
+        setHud({ score: Math.round(state.run) + state.tokens * 10 + state.stations * 50, tokens: state.tokens, distance: Math.round(state.run), next: nextSt ? `${nextSt.name} · ${Math.round(nextSt.ahead)} m` : "", street,
+          clock: new Date().toLocaleTimeString("en-GB", { hour12: false }),
+          eta: nextSt ? new Date(Date.now() + (nextSt.ahead / Math.max(1, state.speed * (state.bike > 0 ? 1.3 : 1))) * 1000).toLocaleTimeString("en-GB", { hour12: false }) : "", shield: Math.ceil(state.shield), bike: Math.ceil(state.bike), bikeCd: state.bike > 0 ? 0 : Math.ceil(state.bikeCd), kmh: Math.round(state.speed * (state.bike > 0 ? 1.3 : 1) * 3.6), count: mapReady && started ? Math.ceil((goAt - performance.now()) / 1000) : 9 });
       }
     };
     raf = requestAnimationFrame(frame);
@@ -598,9 +709,10 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       {phase === "playing" && hud.count > 0 && hud.count <= 3 && <div key={hud.count} className="sr-count">{hud.count}</div>}
       {phase === "playing" && hud.count <= 0 && hud.count > -1 && <div className="sr-count go">GO!</div>}
       {(hud.street || hud.next) && phase === "playing" && (
-        <div className="runner-next">{hud.street && <>📍 <b>{hud.street}</b></>}{hud.street && hud.next && " · "}{hud.next && <>Next: <b>{hud.next}</b></>}</div>
+        <div className="runner-next">{hud.street && <>📍 <b>{hud.street}</b></>}{hud.street && hud.next && " · "}{hud.next && <>Next: <b>{hud.next}</b></>}{hud.eta && <span className="sr-eta"> 🕒 arr {hud.eta}</span>}</div>
       )}
       {flash && <div className="runner-flash">{flash}</div>}
+      {phase === "playing" && hud.clock && <div className="sr-clock">{hud.clock}</div>}
       {phase === "playing" && (
         <div className="runner-pad">
           <button onClick={() => controls.current.left()} aria-label="Left">◀</button>
@@ -643,6 +755,16 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
               <button key={r.id} className={`chip ${line === r.id ? "on" : ""}`} onClick={() => { autoStart.current = false; setLine(r.id); setPhase("ready"); }}><LinePill id={r.id} /> {r.short}</button>
             ))}
           </div>
+          {!!cr?.routes.length && (
+            <>
+              <b className="small" style={{ marginBottom: -4 }}>🚆 Commuter Rail</b>
+              <div className="chips cr-chips" style={{ flexWrap: "wrap" }}>
+                {cr.routes.map((r) => (
+                  <button key={r.id} className={`chip ${line === r.id ? "on" : ""}`} onClick={() => { autoStart.current = false; setLine(r.id); setPhase("ready"); }}><span className="line-pill" style={{ background: "#80276C" }}>CR</span> {r.short}</button>
+                ))}
+              </div>
+            </>
+          )}
           <button className="btn primary block" onClick={start}>{phase === "ready" ? "▶ Start run" : "↻ Run again"}</button>
           {top && top.players.length > 0 && (
             <div className="col" style={{ gap: 6 }}>

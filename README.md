@@ -61,6 +61,7 @@ Copy `.env.example` to `.env` to add keys. `npm test` runs the unit tests for sc
 | Need | Source | Notes |
 |---|---|---|
 | Lines, stations, shapes | MBTA V3 API | Saved to `data/mbta.json` by `npm run bake:mbta` |
+| Commuter Rail lines and stops | MBTA V3 API | 13 lines, 143 stops in `data/commuter-rail.json` (`npm run bake:commuter`). On the map and in Street Runner; check-ins and the school board stay subway-only |
 | Live trains, alerts, predictions | MBTA V3 API | Poller: vehicles every 10–15 s, predictions every 30 s, alerts every 2 min |
 | Food, study and park spots | OpenStreetMap via Overpass | 1,615 spots within ~450 m of stations, saved to `data/spots.json` |
 | Neighborhoods | Analyze Boston (2020 census-tract approximation) | 23 neighborhoods; Cambridge and Medford/Somerville are bonus areas by station city |

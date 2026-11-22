@@ -35,3 +35,9 @@
 .runner-pad button.bike-btn.cool { background: #9fb3cc !important; filter: grayscale(.6); }
 .runner-pad button.bike-btn small { position: absolute; top: -8px; right: -8px; min-width: 22px; height: 22px; border-radius: 999px; background: #0b1220; color: #fff; font: 800 11px/22px Inter, system-ui, sans-serif; }
 @media (prefers-reduced-motion: reduce) { .speedlines, .sr-count, .sr-coins, .sr-bike, .sr-hint, .runner-pad button.bike-btn.on { animation: none !important; } }
+/* train-sim style station clock and arrival time */
+.sr-clock { position: absolute; left: 50%; bottom: calc(var(--safe-bottom, 0px) + 96px); transform: translateX(-50%); z-index: 2; pointer-events: none;
+  font: 800 15px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: .08em; color: #fff; padding: 7px 16px;
+  background: rgba(11,18,32,.82); border: 2px solid #0b1220; clip-path: polygon(10px 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 10px 100%, 0 50%); }
+.sr-eta { color: #ffd84a; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-weight: 700; }
+.cr-chips .chip.on { outline: 2px solid #80276C; }

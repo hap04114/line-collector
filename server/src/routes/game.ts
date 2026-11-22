@@ -6,7 +6,7 @@ import { getDb } from "../db/index.js";
 import { requireUser } from "../auth.js";
 import { SCHOOLS, schoolById } from "../data/schools.js";
 import { NEIGHBORHOODS } from "../data/neighborhoods.js";
-import { BOSTON_NEIGHBORHOOD_COUNT, NEIGHBORHOOD_META, ROUTES, SHAPES, STATIONS, nearestSchool, nearestStations, rentCache, stationById } from "../lib/static.js";
+import { BOSTON_NEIGHBORHOOD_COUNT, CR_ROUTES, CR_SHAPES, CR_STATIONS, NEIGHBORHOOD_META, ROUTES, SHAPES, STATIONS, nearestSchool, nearestStations, rentCache, stationById } from "../lib/static.js";
 import { levelFor, weekStart } from "../lib/time.js";
 import { HttpError, firstName, rateLimit } from "../lib/util.js";
 import { BADGES } from "../services/badges.js";
@@ -38,6 +38,14 @@ gameRoutes.get("/map/static", (_req, res) => {
     neighborhoods: NEIGHBORHOODS,
     cravings: Object.entries(CRAVINGS).map(([id, c]) => ({ id, label: c.label })),
     vibes: VIBES,
+    commuter: {
+      routes: CR_ROUTES.map((r) => ({ id: r.id, name: r.name, short: r.short, color: r.color, stopIds: r.stopIds })),
+      shapes: {
+        type: "FeatureCollection",
+        features: CR_SHAPES.map((s) => ({ type: "Feature", properties: { routeId: s.routeId, color: "#80276C" }, geometry: { type: "LineString", coordinates: s.coords } })),
+      },
+      stations: CR_STATIONS,
+    },
   });
 });
 
