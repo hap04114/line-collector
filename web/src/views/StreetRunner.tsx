@@ -112,12 +112,12 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
   const [phase, setPhase] = useState<"ready" | "playing" | "over">("ready");
   const [runKey, setRunKey] = useState(0);
   const autoStart = useRef(false);
-  const [hud, setHud] = useState({ score: 0, tokens: 0, distance: 0, next: "", street: "", shield: 0, kmh: 0, count: 0 });
+  const [hud, setHud] = useState({ score: 0, tokens: 0, distance: 0, next: "", street: "", shield: 0, bike: 0, bikeCd: 0, kmh: 0, count: 0 });
   const [flash, setFlash] = useState<string | null>(null);
   const [result, setResult] = useState<any>(null);
   const [top, setTop] = useState<any>(null);
   const el = useRef<HTMLDivElement>(null);
-  const controls = useRef({ left: () => {}, right: () => {}, jump: () => {} });
+  const controls = useRef({ left: () => {}, right: () => {}, jump: () => {}, bike: () => {} });
   const route = s.routeById.get(line);
 
   useEffect(() => { api.get(`/arcade/top?line=${line}`).then(setTop).catch(() => {}); }, [line, result]);
@@ -161,18 +161,85 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
     const lineColor = new THREE.Color(route.color);
     const SCALE = 3.2; // game pieces are drawn larger than life so they read at street-level zoom
 
+    // ---- the runner: a big cartoon student with a real run cycle, and a blue bike power-up ----
+    // local axes: +y up, +z is the direction of travel (the camera sees the runner's back)
+    const RSCALE = 4.6;
+    const mat = (color: THREE.ColorRepresentation, extra: THREE.MeshStandardMaterialParameters = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.55, ...extra });
+    const skin = mat(0xf2c9a0), shirt = mat(schoolColor), pants = mat(0x2b3a55), shoeMat = mat(0xffffff), soleMat = mat(lineColor), capMat = mat(lineColor), hairMat = mat(0x3b2a20), packMat = mat(0xff8a3d), packPocket = mat(0xffb36b);
+    // a capsule hanging down from its pivot, for arms and legs
+    const limb = (r: number, len: number, m: THREE.Material) => { const g = new THREE.CapsuleGeometry(r, len, 4, 10); g.translate(0, -len / 2 - r * 0.4, 0); return new THREE.Mesh(g, m); };
     const runner = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.42, 0.8, 6, 12), new THREE.MeshStandardMaterial({ color: schoolColor }));
-    body.position.y = 0.95;
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.33, 18, 14), new THREE.MeshStandardMaterial({ color: 0xf2c9a0 }));
-    head.position.y = 1.85;
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: lineColor }));
-    cap.position.y = 1.9;
-    const bubble = new THREE.Mesh(new THREE.SphereGeometry(1.4, 20, 14), new THREE.MeshBasicMaterial({ color: 0x7ad7ff, transparent: true, opacity: 0.25 }));
-    bubble.position.y = 1.1; bubble.visible = false;
-    runner.add(body, head, cap, bubble);
-    runner.scale.setScalar(SCALE);
+    const rig = new THREE.Group();
+    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.36, 0.55, 6, 14), shirt); torso.position.y = 1.42; torso.scale.set(1.12, 1, 0.82);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.34, 20, 16), skin); head.position.set(0, 2.18, 0.03);
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.35, 20, 16), hairMat); hair.position.set(0, 2.16, -0.04);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.37, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), capMat); cap.position.y = 2.24;
+    const brim = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.32), capMat); brim.position.set(0, 2.26, 0.4);
+    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.66, 0.3), packMat); pack.position.set(0, 1.5, -0.38);
+    const pocket = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.26, 0.08), packPocket); pocket.position.set(0, 1.34, -0.56);
+    const mkArm = (side: number) => {
+      const g = new THREE.Group(); g.position.set(side * 0.5, 1.8, 0);
+      const sleeve = limb(0.15, 0.16, shirt);
+      const arm = limb(0.11, 0.52, skin);
+      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10), skin); hand.position.y = -0.76;
+      g.add(arm, sleeve, hand); return g;
+    };
+    const mkLeg = (side: number) => {
+      const g = new THREE.Group(); g.position.set(side * 0.2, 1.02, 0);
+      const leg = limb(0.15, 0.62, pants);
+      const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.17, 0.46), shoeMat); shoe.position.set(0, -0.92, 0.08);
+      const sole = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.48), soleMat); sole.position.set(0, -1.0, 0.08);
+      g.add(leg, shoe, sole); return g;
+    };
+    const armL = mkArm(-1), armR = mkArm(1), legL = mkLeg(-1), legR = mkLeg(1);
+    rig.add(torso, hair, head, cap, brim, pack, pocket, armL, armR, legL, legR);
+
+    // the blue bike (generic, unbranded): two spinning wheels, a frame, a saddle and handlebars
+    const blue = mat(0x1e7bff, { metalness: 0.35, roughness: 0.3, emissive: 0x0a2a66, emissiveIntensity: 0.35 });
+    const tire = mat(0x1a1a1a), chrome = mat(0xdfe6ee, { metalness: 0.85, roughness: 0.2 });
+    const tube = (a: THREE.Vector3, b: THREE.Vector3, r: number, m: THREE.Material) => {
+      const d = b.clone().sub(a);
+      const t = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d.length(), 10), m);
+      t.position.copy(a).add(b).multiplyScalar(0.5);
+      t.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+      return t;
+    };
+    const bike = new THREE.Group(); bike.visible = false;
+    const wheels: THREE.Group[] = [];
+    for (const z of [-0.8, 0.8]) {
+      const w = new THREE.Group(); w.position.set(0, 0.58, z);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.52, 0.075, 10, 32), tire); rim.rotation.y = Math.PI / 2;
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.44, 0.025, 6, 28), blue); ring.rotation.y = Math.PI / 2;
+      w.add(rim, ring);
+      for (let i = 0; i < 4; i++) { const sp = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.9, 0.025), chrome); sp.rotation.x = (i * Math.PI) / 4; w.add(sp); }
+      wheels.push(w); bike.add(w);
+    }
+    const P = (y: number, z: number, x = 0) => new THREE.Vector3(x, y, z);
+    const R = P(0.58, -0.8), F = P(0.58, 0.8), B = P(0.5, -0.05), S = P(1.22, -0.36), H = P(1.2, 0.56), BAR = P(1.48, 0.64);
+    bike.add(tube(R, B, 0.05, blue), tube(R, S, 0.045, blue), tube(B, S, 0.065, blue), tube(B, H, 0.075, blue), tube(S, H, 0.06, blue), tube(H, F, 0.05, chrome), tube(H, BAR, 0.05, chrome), tube(P(1.48, 0.64, -0.42), P(1.48, 0.64, 0.42), 0.04, chrome));
+    const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.09, 0.4), mat(0x222222)); saddle.position.set(0, 1.3, -0.4);
+    const basket = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.32, 0.36), mat(0x1e7bff, { transparent: true, opacity: 0.85 })); basket.position.set(0, 1.42, 0.95);
+    // parts that read from behind (the camera mostly sees the bike's back): fat fenders, a rack bag, a tail light
+    const fenderGeo = new THREE.CylinderGeometry(0.64, 0.64, 0.32, 20, 1, true, -Math.PI * 0.05, Math.PI * 0.65); fenderGeo.rotateZ(Math.PI / 2);
+    const fenderMat = mat(0x1e7bff, { metalness: 0.35, roughness: 0.3, emissive: 0x0a2a66, emissiveIntensity: 0.35, side: THREE.DoubleSide });
+    const rearFender = new THREE.Mesh(fenderGeo, fenderMat); rearFender.position.set(0, 0.58, -0.8); rearFender.rotation.x = Math.PI * 0.95;
+    const frontFender = new THREE.Mesh(fenderGeo, fenderMat); frontFender.position.set(0, 0.58, 0.8); frontFender.rotation.x = -Math.PI * 0.25;
+    const rackBag = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.34, 0.55), blue); rackBag.position.set(0, 1.0, -0.88);
+    const rackStripe = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.07, 0.57), mat(0xffffff)); rackStripe.position.set(0, 1.02, -0.88);
+    const tailLight = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.1, 0.05), new THREE.MeshBasicMaterial({ color: 0xff3b3b })); tailLight.position.set(0, 0.92, -1.17);
+    const trail = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 8), new THREE.MeshBasicMaterial({ color: 0x4aa3ff, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide }));
+    trail.rotation.x = -Math.PI / 2; trail.position.set(0, 0.06, -5.2);
+    bike.add(saddle, basket, rearFender, frontFender, rackBag, rackStripe, tailLight, trail);
+
+    const bubble = new THREE.Mesh(new THREE.SphereGeometry(1.65, 24, 16), new THREE.MeshBasicMaterial({ color: 0x7ad7ff, transparent: true, opacity: 0.25, depthWrite: false }));
+    bubble.position.y = 1.3; bubble.visible = false;
+    runner.add(rig, bike, bubble);
+    runner.scale.setScalar(RSCALE);
     scene.add(runner);
+    // soft round shadow on the street that shrinks while you're in the air
+    const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.75, 28), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false }));
+    shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.08;
+    scene.add(shadow);
 
     const geo = { barrier: new THREE.BoxGeometry(2.4, 1, 0.4), cone: new THREE.ConeGeometry(0.5, 1.1, 14), bus: new THREE.BoxGeometry(2.4, 3, 9), train: new THREE.BoxGeometry(2.8, 3.4, 22), token: new THREE.CylinderGeometry(0.5, 0.5, 0.12, 24), shield: new THREE.SphereGeometry(0.5, 16, 12) };
     geo.token.rotateX(Math.PI / 2);
@@ -205,7 +272,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       marks.push({ s: pr.s, side, mesh: m, name, shown: false });
     }
 
-    const state = { run: 0, lane: 1, x: 0, y: 0, vy: 0, speed: 18, tokens: 0, stations: 0, shield: 0, over: false, nextSpawn: 150, t0: performance.now(), bearing: 0 };
+    const state = { run: 0, lane: 1, x: 0, y: 0, vy: 0, speed: 18, tokens: 0, stations: 0, shield: 0, bike: 0, bikeCd: 0, over: false, nextSpawn: 150, t0: performance.now(), bearing: 0 };
     let mapReady = false;
     let started = autoStart.current;
     let goAt = Infinity; // 3-2-1 countdown ends here
@@ -254,7 +321,32 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
         runner.position.set(0, state.y, 0);
         runner.rotation.y = yaw + Math.PI;
         bubble.visible = state.shield > 0;
-        body.position.y = 0.95 + (state.y > 0 ? 0 : Math.abs(Math.sin(state.run * 1.3)) * 0.1);
+        // pose: run cycle, pedaling on the bike, or a tuck in the air
+        const onBike = state.bike > 0;
+        const air = state.y > 0.05;
+        const ph = state.run * (onBike ? 0.38 : 0.45);
+        const sw = Math.sin(ph);
+        bike.visible = onBike;
+        shadow.scale.setScalar(RSCALE * (onBike ? 1.5 : 1) * Math.max(0.45, 1 - state.y / 14));
+        if (onBike) {
+          for (const w of wheels) w.rotation.x = state.run / (0.58 * RSCALE);
+          rig.position.set(0, 0.34 + (air ? 0 : Math.abs(sw) * 0.03), 0);
+          rig.rotation.x = 0.28;
+          legL.rotation.x = -1.0 + sw * 0.55; legR.rotation.x = -1.0 - sw * 0.55;
+          armL.rotation.x = armR.rotation.x = -1.05;
+          armL.rotation.z = 0.12; armR.rotation.z = -0.12;
+          trail.scale.y = 0.8 + Math.abs(Math.sin(state.run * 0.9)) * 0.4;
+        } else if (air) {
+          rig.position.set(0, 0, 0); rig.rotation.x = 0.12;
+          legL.rotation.x = -0.9; legR.rotation.x = 0.5;
+          armL.rotation.x = -2.6; armR.rotation.x = -2.3;
+          armL.rotation.z = -0.25; armR.rotation.z = 0.25;
+        } else {
+          rig.position.set(0, Math.abs(Math.cos(ph)) * 0.13, 0); rig.rotation.x = started ? 0.16 : 0;
+          legL.rotation.x = sw * 0.95; legR.rotation.x = -sw * 0.95;
+          armL.rotation.x = -sw * 0.85; armR.rotation.x = sw * 0.85;
+          armL.rotation.z = -0.08; armR.rotation.z = 0.08;
+        }
         for (const t of things) {
           if (!t.alive) continue;
           const w = runToLngLat(t.s, LANES[t.lane]);
@@ -362,26 +454,42 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       left: () => { if (state.lane > 0) state.lane--; },
       right: () => { if (state.lane < 2) state.lane++; },
       jump: () => { if (state.y <= 0.001) state.vy = 10; },
+      // 🚲 blue bike: 8 s, 30% faster, one crash just knocks you off the bike; 20 s cooldown
+      bike: () => {
+        if (!started || state.over || performance.now() < goAt || state.bike > 0 || state.bikeCd > 0) return;
+        state.bike = 8; state.bikeCd = 20;
+        setFlash("🚲 Blue bike! 8 s"); setTimeout(() => setFlash(null), 1200);
+      },
     };
     const onKey = (e: KeyboardEvent) => {
       if (["ArrowLeft", "a", "A"].includes(e.key)) controls.current.left();
       else if (["ArrowRight", "d", "D"].includes(e.key)) controls.current.right();
       else if (["ArrowUp", "w", "W", " "].includes(e.key)) controls.current.jump();
+      else if (["b", "B"].includes(e.key)) controls.current.bike();
       else return;
       e.preventDefault();
     };
     let touch: { x: number; y: number } | null = null;
+    let lastTap = 0;
     const ts = (e: TouchEvent) => { touch = { x: e.touches[0].clientX, y: e.touches[0].clientY }; };
     const te = (e: TouchEvent) => {
       if (!touch) return;
       const dx = e.changedTouches[0].clientX - touch.x, dy = e.changedTouches[0].clientY - touch.y;
       if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 25) (dx < 0 ? controls.current.left : controls.current.right)();
-      else controls.current.jump();
+      else {
+        controls.current.jump();
+        // a double-tap hops on the bike
+        const now = performance.now();
+        if (Math.abs(dx) < 15 && Math.abs(dy) < 15 && now - lastTap < 320) controls.current.bike();
+        lastTap = now;
+      }
       touch = null;
     };
+    const dbl = (e: MouseEvent) => { e.preventDefault(); controls.current.bike(); };
     window.addEventListener("keydown", onKey);
     el.current.addEventListener("touchstart", ts, { passive: true });
     el.current.addEventListener("touchend", te);
+    el.current.addEventListener("dblclick", dbl);
     const host = el.current;
 
     let raf = 0, last = performance.now(), hudT = 0, streetT = 0, street = "";
@@ -397,7 +505,10 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       last = now;
       if (started && mapReady && now >= goAt && !state.over) {
         state.speed = Math.min(45, state.speed + dt * 0.7);
-        state.run += state.speed * dt;
+        state.run += state.speed * (state.bike > 0 ? 1.3 : 1) * dt;
+        if (state.bike > 0 && state.bike - dt <= 0) { setFlash("🚲 Bike docked, keep running!"); setTimeout(() => setFlash(null), 1100); }
+        state.bike = Math.max(0, state.bike - dt);
+        state.bikeCd = Math.max(0, state.bikeCd - dt);
         state.vy -= 26 * dt;
         state.y = Math.max(0, state.y + state.vy * dt);
         if (state.y === 0) state.vy = Math.max(0, state.vy);
@@ -415,6 +526,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
           } else if (t.kind !== "token" && t.kind !== "shield" && dz < t.len / 2 + 0.6) {
             if (t.kind !== "bus" && t.kind !== "train" && state.y * 1 > t.h * 0.9) continue;
             if (state.shield > 0) { t.alive = false; scene.remove(t.mesh); state.shield = 0; setFlash("Shield used!"); setTimeout(() => setFlash(null), 900); }
+            else if (state.bike > 0) { t.alive = false; scene.remove(t.mesh); state.bike = 0; state.vy = 7; setFlash("💥 Off the bike! Keep running"); setTimeout(() => setFlash(null), 1100); }
             else end();
           }
         }
@@ -442,7 +554,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
         hudT = 0;
         const k = Math.floor((startS + state.run) / L), fw = k % 2 === 0;
         const nextSt = signs.map((sg) => ({ name: sg.name, ahead: k * L - startS + (fw ? sg.s : L - sg.s) - state.run })).filter((x) => x.ahead > 0).sort((a, b) => a.ahead - b.ahead)[0];
-        setHud({ score: Math.round(state.run) + state.tokens * 10 + state.stations * 50, tokens: state.tokens, distance: Math.round(state.run), next: nextSt ? `${nextSt.name} · ${Math.round(nextSt.ahead)} m` : "", street, shield: Math.ceil(state.shield), kmh: Math.round(state.speed * 3.6), count: mapReady && started ? Math.ceil((goAt - performance.now()) / 1000) : 9 });
+        setHud({ score: Math.round(state.run) + state.tokens * 10 + state.stations * 50, tokens: state.tokens, distance: Math.round(state.run), next: nextSt ? `${nextSt.name} · ${Math.round(nextSt.ahead)} m` : "", street, shield: Math.ceil(state.shield), bike: Math.ceil(state.bike), bikeCd: state.bike > 0 ? 0 : Math.ceil(state.bikeCd), kmh: Math.round(state.speed * (state.bike > 0 ? 1.3 : 1) * 3.6), count: mapReady && started ? Math.ceil((goAt - performance.now()) / 1000) : 9 });
       }
     };
     raf = requestAnimationFrame(frame);
@@ -452,6 +564,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       window.removeEventListener("keydown", onKey);
       host.removeEventListener("touchstart", ts);
       host.removeEventListener("touchend", te);
+      host.removeEventListener("dblclick", dbl);
       map.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -467,7 +580,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
   return (
     <div className="runner">
       <div ref={el} className="runner-stage" />
-      {phase === "playing" && <div className="speedlines" style={{ opacity: Math.max(0, Math.min(0.85, (hud.kmh - 70) / 90)) }} />}
+      {phase === "playing" && <div className={`speedlines${hud.bike > 0 ? " bike" : ""}`} style={{ opacity: hud.bike > 0 ? 0.9 : Math.max(0, Math.min(0.85, (hud.kmh - 70) / 90)) }} />}
       <div className="runner-top">
         <button className="icon-btn" onClick={onClose} aria-label="Close">✕</button>
         <div className="sr-hud">
@@ -476,8 +589,10 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
             <span key={hud.tokens} className="sr-coins">🪙 {hud.tokens}</span>
             <span className="sr-dist">{hud.distance} m</span>
             {hud.shield > 0 && <span className="sr-shield">☕ {hud.shield}s</span>}
+            {hud.bike > 0 && <span key={`b${hud.bike}`} className="sr-bike">🚲 {hud.bike}s</span>}
           </div>
           <div className="sr-speed"><i style={{ width: `${Math.min(100, (hud.kmh / 162) * 100)}%` }} /><b>{hud.kmh} km/h</b></div>
+          {phase === "playing" && hud.count <= 0 && hud.bike <= 0 && hud.bikeCd <= 0 && <div className="sr-hint">Double-click for a 🚲 blue bike</div>}
         </div>
       </div>
       {phase === "playing" && hud.count > 0 && hud.count <= 3 && <div key={hud.count} className="sr-count">{hud.count}</div>}
@@ -491,6 +606,9 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
           <button onClick={() => controls.current.left()} aria-label="Left">◀</button>
           <button onClick={() => controls.current.jump()} aria-label="Jump">▲</button>
           <button onClick={() => controls.current.right()} aria-label="Right">▶</button>
+          <button className={`bike-btn${hud.bike > 0 ? " on" : hud.bikeCd > 0 ? " cool" : ""}`} onClick={() => controls.current.bike()} aria-label="Blue bike">
+            🚲{hud.bikeCd > 0 && hud.bike <= 0 && <small>{hud.bikeCd}</small>}
+          </button>
         </div>
       )}
       {phase !== "playing" && (
@@ -500,7 +618,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
               <div className="logo" style={{ fontSize: 28 }}>Street <i>Runner</i></div>
               <p className="small muted" style={{ margin: 0 }}>
                 Run your T line's real route through the real streets of Boston: real buildings, real street names, real shops. Dodge shuttle buses and DELAY barriers, grab tokens, +50 for every station you pass.
-                ← → to switch lanes, ↑ or Space to jump, or swipe.
+                ← → to switch lanes, ↑ or Space to jump, or swipe. Double-click (double-tap, or B) to hop on a 🚲 blue bike: 30% faster, and a crash only knocks you off the bike.
               </p>
             </>
           ) : (

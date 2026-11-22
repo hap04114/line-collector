@@ -24,4 +24,14 @@
 .runner-pad button { background: rgba(255,255,255,.92) !important; color: #0b1220 !important; border: 2px solid #0b1220 !important; box-shadow: 0 4px 0 #0b1220; font-size: 26px; }
 .runner-pad button:active { transform: translateY(3px); box-shadow: 0 1px 0 #0b1220; }
 .runner-flash { color: #F7DD04 !important; -webkit-text-stroke: 1.5px #0b1220; text-shadow: 0 4px 0 #0b1220 !important; font-size: 30px !important; }
-@media (prefers-reduced-motion: reduce) { .speedlines, .sr-count, .sr-coins { animation: none !important; } }
+/* blue bike power-up */
+.sr-bike { font: 800 14px/1 Inter, system-ui, sans-serif; padding: 7px 11px; border-radius: 999px; border: 2px solid #0b1220; box-shadow: 0 3px 0 #0b1220; background: #1e7bff; color: #fff; animation: coinpop .35s cubic-bezier(.2,1.8,.4,1); }
+.sr-hint { font: 800 12px/1 Inter, system-ui, sans-serif; padding: 6px 10px; border-radius: 999px; background: rgba(30,123,255,.92); color: #fff; border: 2px solid #0b1220; box-shadow: 0 3px 0 #0b1220; animation: hintpulse 1.4s ease-in-out infinite; }
+@keyframes hintpulse { 50% { transform: scale(1.06); } }
+.speedlines.bike { filter: hue-rotate(0deg) drop-shadow(0 0 6px #4aa3ff);
+  background: repeating-conic-gradient(from 0deg at 50% 46%, rgba(74,163,255,0) 0deg 3deg, rgba(120,190,255,.75) 3deg 3.8deg, rgba(74,163,255,0) 3.8deg 8deg); }
+.runner-pad button.bike-btn { position: relative; background: #1e7bff !important; color: #fff !important; }
+.runner-pad button.bike-btn.on { background: #3ddc97 !important; animation: hintpulse .8s ease-in-out infinite; }
+.runner-pad button.bike-btn.cool { background: #9fb3cc !important; filter: grayscale(.6); }
+.runner-pad button.bike-btn small { position: absolute; top: -8px; right: -8px; min-width: 22px; height: 22px; border-radius: 999px; background: #0b1220; color: #fff; font: 800 11px/22px Inter, system-ui, sans-serif; }
+@media (prefers-reduced-motion: reduce) { .speedlines, .sr-count, .sr-coins, .sr-bike, .sr-hint, .runner-pad button.bike-btn.on { animation: none !important; } }
