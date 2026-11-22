@@ -1,0 +1,59 @@
+{
+  "name": "line-collector",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cheap food and study spots you can reach by T, plus a collection game your whole school plays. BostonHacks 2026.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "tsx watch --clear-screen=false server/src/index.ts",
+    "dev:web": "vite --config web/vite.config.ts",
+    "build": "vite build --config web/vite.config.ts",
+    "start": "tsx server/src/index.ts",
+    "typecheck": "tsc -p server/tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit",
+    "test": "vitest run",
+    "seed": "tsx server/src/db/seed.ts",
+    "bake": "npm run bake:mbta && npm run bake:neighborhoods && npm run bake:spots",
+    "bake:mbta": "tsx scripts/bake-mbta.ts",
+    "bake:neighborhoods": "tsx scripts/bake-neighborhoods.ts",
+    "bake:spots": "tsx scripts/bake-spots.ts",
+    "bake:rent": "tsx scripts/bake-rent.ts",
+    "bake:vibes": "tsx scripts/bake-vibes.ts",
+    "solana:wallet": "tsx scripts/solana-wallet.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/google": "^4.0.124",
+    "@electric-sql/pglite": "^0.5.17",
+    "@mastra/core": "^1.85.0",
+    "@solana/web3.js": "^1.99.0",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^18.0.10",
+    "express": "^5.3.0",
+    "maplibre-gl": "^6.19.0",
+    "multer": "^2.5.0",
+    "opening_hours": "^3.16.0",
+    "pg": "^8.23.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "sharp": "^0.35.5",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.3.0",
+    "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "concurrently": "^10.0.7",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
+  }
+}
