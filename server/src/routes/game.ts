@@ -117,6 +117,14 @@ gameRoutes.get("/stations/:id", async (req, res) => {
 
 const boolQ = (v: unknown) => v === "1" || v === "true";
 
+/** T-Field filters: avoid=milk,peanut · venue=cafe,bakery · showClosed=1 · arriveIn=<minutes to the station> */
+const tfieldQ = (q: any) => ({
+  avoidAllergens: String(q.avoid ?? "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 12),
+  venueTypes: String(q.venue ?? "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 12),
+  showClosed: q.showClosed === "1" || q.showClosed === "true",
+  ...(Number.isFinite(Number(q.arriveIn)) && q.arriveIn ? { arriveInMin: Math.min(180, Math.max(0, Number(q.arriveIn))) } : {}),
+});
+
 gameRoutes.get("/spots", async (req, res) => {
   const db = await getDb();
   const stop = String(req.query.stop || "");
@@ -133,6 +141,7 @@ gameRoutes.get("/spots", async (req, res) => {
       homeRegions: req.user?.home_regions ?? [],
       userId: req.user?.id ?? null,
       limit: req.query.limit ? Math.min(20, Number(req.query.limit)) : 3,
+      ...tfieldQ(req.query),
     }),
   );
 });
@@ -369,6 +378,7 @@ gameRoutes.get("/find", async (req, res) => {
     homeRegions: req.user?.home_regions ?? [],
     userId: req.user?.id ?? null,
     radiusM: Math.min(4000, Number(req.query.radius) || 1600),
+    ...tfieldQ(req.query),
   });
   res.json({ origin, lat, lon, kind, mode: q ? "keywords" : "nearby", ...r });
 });

@@ -19,12 +19,15 @@ import { aiRoutes } from "./routes/ai.js";
 import { arcadeRoutes } from "./routes/arcade.js";
 import { extraRoutes } from "./routes/extra.js";
 import { freeBostonRoutes } from "./routes/freeBoston.js";
+import { tfieldRoutes } from "./routes/tfield.js";
 import { scheduleBackups } from "./lib/storage.js";
+import { applyTField } from "./services/tfield.js";
 
 async function main() {
   const db = await getDb();
   await migrate(db);
   await seedStatic(db);
+  await applyTField(db);
 
   const app = express();
   app.set("trust proxy", 1);
@@ -46,7 +49,7 @@ async function main() {
 
   const api = express.Router();
   api.use(loadSession);
-  api.use(authRoutes, gameRoutes, communityRoutes, liveRoutes, rideRoutes, aiRoutes, arcadeRoutes, extraRoutes, freeBostonRoutes);
+  api.use(authRoutes, gameRoutes, communityRoutes, liveRoutes, rideRoutes, aiRoutes, arcadeRoutes, extraRoutes, freeBostonRoutes, tfieldRoutes);
   app.use("/api", api);
   app.use("/uploads", express.static(UPLOAD_DIR, { maxAge: "7d", fallthrough: false }));
 

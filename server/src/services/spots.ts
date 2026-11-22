@@ -3,6 +3,7 @@ import type { Queryable } from "../db/index.js";
 import { isOpenAt, isOpenLate, nextChangeLabel } from "../lib/hours.js";
 import { haversineM, walkMinutes } from "../lib/geo.js";
 import { stationById, STATIONS } from "../lib/static.js";
+import { compareRanked, evaluate, type Ranked } from "./tfield.js";
 
 export const CRAVINGS: Record<string, { label: string; cuisines?: string[]; amenities?: string[]; regions?: string[]; diets?: string[] }> = {
   pizza: { label: "Pizza", cuisines: ["pizza"] },
@@ -35,6 +36,14 @@ export interface SpotQuery {
   kind?: "food" | "study" | "hangout" | "all";
   limit?: number;
   userId?: string | null;
+  /** T-Field: allergens to avoid (milk, egg, fish, shellfish, seafood, tree_nut, peanut, wheat, soy, sesame) */
+  avoidAllergens?: string[];
+  /** T-Field venue types (restaurant, cafe, bakery, food_truck, …) */
+  venueTypes?: string[];
+  /** include places that are closed when you'd arrive (ranked last) */
+  showClosed?: boolean;
+  /** minutes until you reach the station, added to the walk when judging "open when you arrive" */
+  arriveInMin?: number;
 }
 
 function matchesCraving(s: any, craving: string, homeRegions: string[]): boolean {
@@ -89,7 +98,29 @@ export function decorate(s: any, now = new Date()) {
     partner: s.partner_id ? { id: s.partner_id, isSample: s.partner_is_sample, offer: s.offer_title, stampsNeeded: s.stamps_needed } : null,
     study_rating: s.r_n ? { outlets: +s.r_outlets.toFixed(1), noise: +s.r_noise.toFixed(1), wifi: +s.r_wifi.toFixed(1), n: s.r_n } : null,
     visitedByMe: !!s.visited,
+    // T-Field fields (data/tfield.json, data/google-places.json)
+    allergen: s.allergen ?? null,
+    venueType: s.venue_type ?? null,
+    service: s.service ?? null,
+    priceMinCents: s.price_min_cents ?? null,
+    priceMaxCents: s.price_max_cents ?? null,
+    businessStatus: s.business_status ?? null,
+    verifiedAt: s.verified_at ? new Date(s.verified_at).toISOString().slice(0, 10) : null,
+    rating: s.rating ?? null,
+    ratingCount: s.rating_count ?? null,
   };
+}
+
+/** T-Field rules on a list of food spots, in T-Field's order (availability → budget → cuisine → score). */
+function rankFood<T extends ReturnType<typeof decorate>>(list: T[], now: Date, o: { budgetCents: number | null; avoid?: string[]; venueTypes?: string[]; showClosed?: boolean; vibe?: string; arriveInMin?: number; walkMin: (s: T) => number }) {
+  return list
+    .map((s) => {
+      const arriveMin = (o.arriveInMin ?? 0) + o.walkMin(s);
+      return evaluate(s, { arriveAt: new Date(now.getTime() + arriveMin * 60_000), arriveMin, budgetCents: o.budgetCents, avoid: o.avoid ?? [], venueTypes: o.venueTypes ?? [], showClosed: !!o.showClosed, wantVibe: o.vibe });
+    })
+    .filter((x): x is T & { availability: string; budgetFit: string; warnings: string[]; _rank: Ranked } => !!x)
+    .sort((a, b) => compareRanked(a._rank, b._rank))
+    .map(({ _rank, ...x }) => x);
 }
 
 const SPOT_SELECT = `
@@ -120,20 +151,13 @@ export async function findSpots(q: Queryable, opt: SpotQuery) {
 
   let food = rows.filter((s) => s.kind === "food");
   const totalFood = food.length;
-  food = food.filter((s) => s.priceCents <= budget);
   if (opt.craving) food = food.filter((s) => matchesCraving(s, opt.craving!, opt.homeRegions || []));
   if (opt.vibe) food = food.filter((s) => s.vibes.includes(opt.vibe!));
   if (opt.openNow) food = food.filter((s) => s.openNow === true);
   if (opt.openLate) food = food.filter((s) => s.openLate === true);
 
-  // rank: partners and local spots first, then open, then cheaper and closer
-  food.sort(
-    (a, b) =>
-      Number(!!b.partner) - Number(!!a.partner) ||
-      Number(b.localOwned) - Number(a.localOwned) ||
-      Number(b.openNow === true) - Number(a.openNow === true) ||
-      a.priceCents + a.distanceM * 2 - (b.priceCents + b.distanceM * 2),
-  );
+  // T-Field: open when you arrive, allergens, budget (20% soft), venue type; availability-first order
+  food = rankFood(food, now, { budgetCents: budget, avoid: opt.avoidAllergens, venueTypes: opt.venueTypes, showClosed: opt.showClosed, vibe: opt.vibe, arriveInMin: opt.arriveInMin, walkMin: (s) => s.walkMin });
 
   let suggestion: { stationId: string; name: string; distanceM: number; count: number } | null = null;
   if (!food.length && (opt.kind ?? "food") === "food") suggestion = await nearestStationWithSpots(q, opt, budget);
@@ -171,7 +195,7 @@ export const allStationIds = () => STATIONS.map((s) => s.id);
 /** Spots near a point (any station), for the Find search: food or study, sorted by walking distance. */
 export async function nearbySpots(
   q: Queryable,
-  opt: { lat: number; lon: number; kind: "food" | "study"; budgetCents?: number; craving?: string; text?: string; openNow?: boolean; homeRegions?: string[]; userId?: string | null; radiusM?: number; limit?: number },
+  opt: { lat: number; lon: number; kind: "food" | "study"; budgetCents?: number; craving?: string; text?: string; openNow?: boolean; homeRegions?: string[]; userId?: string | null; radiusM?: number; limit?: number; avoidAllergens?: string[]; venueTypes?: string[]; showClosed?: boolean },
 ) {
   const r = opt.radiusM ?? 1600;
   const dLat = r / 111_000, dLon = r / (111_000 * Math.cos((opt.lat * Math.PI) / 180));
@@ -187,13 +211,17 @@ export async function nearbySpots(
   });
   if (opt.kind === "study") list = list.filter((x) => x.study || x.kind === "study");
   else list = list.filter((x) => x.kind === "food" || x.kind === "landmark" || x.kind === "hangout");
-  if (opt.kind === "food" && opt.budgetCents) list = list.filter((x) => x.priceCents <= opt.budgetCents!);
   if (opt.craving) list = list.filter((x) => matchesCraving(x, opt.craving!, opt.homeRegions || []));
   if (opt.text) {
     const t = opt.text.toLowerCase();
     list = list.filter((x) => x.name.toLowerCase().includes(t) || x.cuisines.some((c: string) => c.includes(t)) || (x.station ?? "").toLowerCase().includes(t));
   }
   if (opt.openNow) list = list.filter((x) => x.openNow === true);
-  list.sort((a, b) => a.distanceM - b.distanceM);
+  if (opt.kind === "food") {
+    // T-Field rules for food (arrival = your walk there); parks and landmarks keep their distance order
+    const food = rankFood(list.filter((x) => x.kind === "food"), now, { budgetCents: opt.budgetCents ?? null, avoid: opt.avoidAllergens, venueTypes: opt.venueTypes, showClosed: opt.showClosed, walkMin: (s) => s.walkMin });
+    const other = list.filter((x) => x.kind !== "food").sort((a, b) => a.distanceM - b.distanceM);
+    list = [...food, ...other] as typeof list;
+  } else list.sort((a, b) => a.distanceM - b.distanceM);
   return { total: list.length, spots: list.slice(0, opt.limit ?? 40) };
 }
