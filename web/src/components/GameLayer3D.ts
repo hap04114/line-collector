@@ -40,6 +40,11 @@ export class GameLayer3D implements CustomLayerInterface {
   private dummy = new THREE.Object3D();
   private schoolColor = new THREE.Color("#c6ff3d");
   private dirty = true;
+  visible = false;
+  setVisible(v: boolean) {
+    this.visible = v;
+    this.map?.triggerRepaint();
+  }
 
   setStations(list: GameStation[], schoolColor: string) {
     this.stations = list;
@@ -100,6 +105,7 @@ export class GameLayer3D implements CustomLayerInterface {
   }
 
   render(_gl: WebGLRenderingContext | WebGL2RenderingContext, args: any) {
+    if (!this.visible) return;
     const t = (performance.now() - this.t0) / 1000;
     // objects grow as you zoom out so the city view still reads like a game board
     const zoom = this.map.getZoom();

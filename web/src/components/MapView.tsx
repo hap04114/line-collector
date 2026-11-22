@@ -44,6 +44,21 @@ export function MapView() {
   });
   const trains = useRef(new Map<string, { from: [number, number]; to: [number, number]; t0: number; color: string; route: string; label: string; bearing: number }>());
   const game = useRef<GameLayer3D | null>(null);
+  const [show3d, setShow3d] = useState(() => {
+    try {
+      return localStorage.getItem("lc-3d") === "1";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    game.current?.setVisible(show3d);
+    try {
+      localStorage.setItem("lc-3d", show3d ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [show3d, loaded]);
   const sRef = useRef(s);
   sRef.current = s;
 
@@ -291,6 +306,7 @@ export function MapView() {
     <>
       <div ref={el} className="map" aria-label="Map of Boston T stations" />
       <div style={{ position: "absolute", right: 10, bottom: "calc(var(--safe-bottom) + 200px)", zIndex: 4, display: "flex", flexDirection: "column", gap: 8 }}>
+        <button className="icon-btn" title="Game tokens on the map" onClick={() => setShow3d(!show3d)} style={show3d ? { borderColor: "var(--accent)" } : undefined}>🪙</button>
         <button className="icon-btn" title="Day / night map" onClick={() => setTheme(theme === "night" ? "day" : "night")}>{theme === "night" ? "☀️" : "🌙"}</button>
         <button className="icon-btn" title="My location" onClick={() => (s.pos ? s.flyTo(s.pos.lat, s.pos.lon, 15.5) : s.toast(s.geoError || "Waiting for GPS…"))}>🎯</button>
       </div>

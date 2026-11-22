@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { fmtDist, haversine } from "./api";
 import { useI18n } from "./i18n";
 import { nearestStation, StoreProvider, useQuest, useStore, type Mode } from "./store";
-import { LineRunner } from "./views/LineRunner";
+import { StreetRunner } from "./views/StreetRunner";
 import { FindView } from "./views/FindView";
 import { MapView } from "./components/MapView";
 import { StationSheet } from "./components/StationSheet";
@@ -49,7 +49,7 @@ function Shell() {
       {s.checkinSpot && <CheckinFlow />}
       {!s.panel && !s.stationId && !s.checkinSpot && s.me && <QuestCard />}
       <BottomNav />
-      {s.panel === "run" && <LineRunner onClose={() => s.setPanel(null)} />}
+      {s.panel === "run" && <StreetRunner onClose={() => s.setPanel(null)} />}
       {s.toastMsg && <div className="toast" role="status">{s.toastMsg}</div>}
       <span className="hidden">{t("map")}</span>
     </div>
@@ -110,7 +110,7 @@ function TopBar() {
             {m.icon} {m.label}
           </button>
         ))}
-        <button className="chip accent run-chip" onClick={() => (s.me ? s.setPanel("run") : s.setSignedOutBrowse(false))}>🎮 Line Runner</button>
+        <button className="chip accent run-chip" onClick={() => (s.me ? s.setPanel("run") : s.setSignedOutBrowse(false))}>🏃 Street Runner</button>
       </div>
       <button className="searchbar" onClick={() => { s.openStation(null); s.setPanel("find"); }}>🔍 <span>Find food or a study spot near you</span></button>
       {near && (
