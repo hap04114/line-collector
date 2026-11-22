@@ -69,6 +69,10 @@ Copy `.env.example` to `.env` to add keys. `npm test` runs the unit tests for sc
 | Rent | RentCast | `npm run bake:rent` with `RENTCAST_API_KEY`; cached per ZIP |
 | Weather | Open-Meteo | Warm-Up quests at feels-like ≤ 25°F or snow |
 
+## 3D character credits
+
+Street Runner's real look uses two character files from the three.js examples (`web/public/models/`): **Michelle** (the runner) and **Soldier** (only its Run, Walk, Idle and TPose motion clips; it is never drawn). Both are Adobe Mixamo characters and animations, which Mixamo allows in projects royalty-free. Each frame, the soldier's motion is retargeted onto Michelle's skeleton in code (`StreetRunner.tsx`, `applyRetarget`). The 🍬 Colorful look keeps the original cartoon runner.
+
 ## Be honest on stage
 
 - **Prices are estimates.** OSM has no prices, so each spot's price comes from its type and cuisine and is labelled "est." Put hand-checked prices in `data/price-overrides.json` as `{ "<spot id>": { "priceCents": 750, "cheapestItem": "Cheese slice" } }`, then restart. Those show as checked.
