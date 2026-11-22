@@ -5,6 +5,7 @@ import { LinePill, spotEmoji, useStore, type Mode } from "../store";
 import { onSpotPinClick, showSpotPins } from "./MapView";
 import { Sheet, Stepper } from "./Sheet";
 import { BusyHeat, MenuReader } from "./SpotExtras";
+import { FoodFilters, GetThere, SpotBadges, tfieldQuery, useTFieldPrefs } from "./TFieldBits";
 
 export function StationSheet() {
   const s = useStore();
@@ -99,6 +100,7 @@ function SpotRow({ spot, selected, onClick }: { spot: any; selected: boolean; on
             {spot.vibes?.map((v: string) => <span key={v} className="tag">{v}</span>)}
           </div>
         )}
+        <SpotBadges spot={spot} />
       </div>
       <div className="price">
         {spot.kind === "food" ? money(spot.priceCents) : "free"}
@@ -137,6 +139,7 @@ function SpotDetail({ spotId }: { spotId: string }) {
       {sp.priceSource === "estimate" && sp.kind === "food" && <div className="tiny muted">Price is an estimate from the type of place, not a checked menu price.</div>}
       {sp.priceSource === "menu" && <div className="tiny" style={{ color: "var(--ok)" }}>✓ Price from a menu photo a student shared{sp.cheapestItem ? `: cheapest is ${sp.cheapestItem}` : ""}</div>}
       {sp.kind === "food" && <MenuReader spotId={sp.id} onUpdated={() => setRev(rev + 1)} />}
+      <GetThere spot={sp} />
       <BusyHeat spotId={sp.id} />
       {d.stamp && (
         <div className="banner" style={{ borderColor: "#ffd16666" }}>
@@ -181,11 +184,13 @@ function EatTab({ stationId, selected, setSelected }: { stationId: string; selec
   const [limit, setLimit] = useState(3);
   const [res, setRes] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const tf = useTFieldPrefs();
+  const tfq = tfieldQuery(tf.prefs);
 
   useEffect(() => {
     setLoading(true);
     api
-      .get(`/spots?${qs({ stop: stationId, budget, craving, vibe, openNow, openLate, limit })}`)
+      .get(`/spots?${qs({ stop: stationId, budget, craving, vibe, openNow, openLate, limit, ...tfq })}`)
       .then((r) => {
         setRes(r);
         showSpotPins([...r.food, ...r.landmarks].map((x: any) => ({ id: x.id, name: x.name, lat: x.lat, lon: x.lon, partner: !!x.partner, kind: x.kind })), selected);
@@ -193,7 +198,7 @@ function EatTab({ stationId, selected, setSelected }: { stationId: string; selec
       .catch(() => {})
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stationId, budget, craving, vibe, openNow, openLate, limit]);
+  }, [stationId, budget, craving, vibe, openNow, openLate, limit, tfq.avoid, tfq.venue, tfq.showClosed]);
   useEffect(() => {
     if (res) showSpotPins([...res.food, ...res.landmarks].map((x: any) => ({ id: x.id, name: x.name, lat: x.lat, lon: x.lon, partner: !!x.partner, kind: x.kind })), selected);
   }, [selected, res]);
@@ -223,6 +228,7 @@ function EatTab({ stationId, selected, setSelected }: { stationId: string; selec
           <button key={v} className={`chip ${vibe === v ? "on" : ""}`} onClick={() => setVibe(vibe === v ? "" : v)}>{v}</button>
         ))}
       </div>
+      <FoodFilters />
       <div className="list" aria-busy={loading}>
         {res?.food.map((sp: any) => (
           <div key={sp.id} className="col" style={{ gap: 8 }}>

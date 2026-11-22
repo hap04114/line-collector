@@ -3,6 +3,7 @@ import { api, fmtDist, money, qs } from "../api";
 import { useI18n } from "../i18n";
 import { spotEmoji, useStore } from "../store";
 import { Sheet, Stepper } from "../components/Sheet";
+import { FoodFilters, SpotBadges, tfieldQuery, useTFieldPrefs } from "../components/TFieldBits";
 
 /** Find food or a study spot near you, across every nearby station, sorted by walking distance. */
 export function FindView({ initialKind = "food" }: { initialKind?: "food" | "study" }) {
@@ -16,19 +17,20 @@ export function FindView({ initialKind = "food" }: { initialKind?: "food" | "stu
   const [res, setRes] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const tfq = tfieldQuery(useTFieldPrefs().prefs);
 
   useEffect(() => {
     const h = setTimeout(() => {
       setBusy(true);
       setErr(null);
       api
-        .get(`/find?${qs({ kind, q: text, budget: kind === "food" ? budget : undefined, craving: kind === "food" ? craving : undefined, openNow, lat: s.pos?.lat, lon: s.pos?.lon })}`)
+        .get(`/find?${qs({ kind, q: text, budget: kind === "food" ? budget : undefined, craving: kind === "food" ? craving : undefined, openNow, lat: s.pos?.lat, lon: s.pos?.lon, ...(kind === "food" ? tfq : {}) })}`)
         .then(setRes)
         .catch((e) => setErr(e.message))
         .finally(() => setBusy(false));
     }, 250);
     return () => clearTimeout(h);
-  }, [kind, text, budget, craving, openNow, s.pos?.lat, s.pos?.lon]);
+  }, [kind, text, budget, craving, openNow, s.pos?.lat, s.pos?.lon, tfq.avoid, tfq.venue, tfq.showClosed]);
 
   const open = (sp: any) => {
     s.setPanel(null);
@@ -53,6 +55,7 @@ export function FindView({ initialKind = "food" }: { initialKind?: "food" | "stu
           <div className="chips">
             {cravings.map((c) => <button key={c.id} className={`chip ${craving === c.id ? "on" : ""}`} onClick={() => setCraving(craving === c.id ? "" : c.id)}>{c.label}</button>)}
           </div>
+          <FoodFilters />
         </>
       )}
       <div className="chips">
@@ -76,6 +79,7 @@ export function FindView({ initialKind = "food" }: { initialKind?: "food" | "stu
                 {sp.openNow === false && " · closed now"}
                 {sp.nextChange && ` · ${sp.nextChange}`}
               </div>
+              {kind === "food" && <SpotBadges spot={sp} />}
               {kind === "study" && sp.study_rating && <div className="tiny">🔌 {sp.study_rating.outlets}/5 · 🤫 {sp.study_rating.noise}/5 · 📶 {sp.study_rating.wifi}/5</div>}
               {kind === "study" && !sp.study_rating && <div className="tiny muted">{sp.kind === "study" ? "Library" : "Café with wifi"} · no student ratings yet</div>}
             </div>
