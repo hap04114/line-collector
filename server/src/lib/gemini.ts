@@ -5,6 +5,8 @@
 import { config } from "../config.js";
 
 export const geminiEnabled = () => !!config.gemini.apiKey;
+/** model that answered the last call (shown on the proof page) */
+export let lastModel: string | null = null;
 
 interface GenOpts {
   system?: string;
@@ -18,19 +20,41 @@ export async function generateJson<T = any>(opts: GenOpts): Promise<T> {
   if (!geminiEnabled()) throw new Error("GEMINI_API_KEY not set");
   const parts: any[] = [{ text: opts.prompt }];
   for (const img of opts.images || []) parts.push({ inline_data: { mime_type: img.mime, data: img.data.toString("base64") } });
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.gemini.model)}:generateContent`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-goog-api-key": config.gemini.apiKey },
-    body: JSON.stringify({
-      ...(opts.system ? { systemInstruction: { parts: [{ text: opts.system }] } } : {}),
-      contents: [{ role: "user", parts }],
-      generationConfig: { responseMimeType: "application/json", temperature: opts.temperature ?? 0.2 },
-    }),
-    signal: AbortSignal.timeout(opts.timeoutMs ?? 30_000),
+  const body = JSON.stringify({
+    ...(opts.system ? { systemInstruction: { parts: [{ text: opts.system }] } } : {}),
+    contents: [{ role: "user", parts }],
+    generationConfig: { responseMimeType: "application/json", temperature: opts.temperature ?? 0.2 },
   });
-  if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 300)}`);
-  const json: any = await res.json();
+  // primary model, then fallbacks when one is overloaded (503), rate limited (429) or retired (404)
+  const models = [config.gemini.model, ...config.gemini.fallbacks.filter((m) => m !== config.gemini.model)];
+  const deadline = Date.now() + (opts.timeoutMs ?? 30_000);
+  let json: any = null;
+  let lastErr = "";
+  for (const model of models) {
+    const left = deadline - Date.now();
+    if (left < 800) break;
+    // give each model at most ~55% of the budget so a slow/overloaded one leaves room for the fallback
+    const isLast = model === models[models.length - 1];
+    const attemptMs = isLast ? left : Math.min(left, Math.max(6000, Math.round((opts.timeoutMs ?? 30_000) * 0.55)));
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": config.gemini.apiKey },
+        body,
+        signal: AbortSignal.timeout(attemptMs),
+      });
+      if (res.ok) {
+        json = await res.json();
+        lastModel = model;
+        break;
+      }
+      lastErr = `Gemini ${model} ${res.status}: ${(await res.text()).slice(0, 200)}`;
+      if (![429, 500, 503, 404].includes(res.status)) break;
+    } catch (e) {
+      lastErr = `Gemini ${model}: ${(e as Error).message}`;
+    }
+  }
+  if (!json) throw new Error(lastErr || "Gemini timed out");
   const text = (json.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || "").join("");
   try {
     return JSON.parse(text) as T;

@@ -12,7 +12,7 @@ import QRCode from "qrcode";
 import { config } from "../config.js";
 import { getDb, type Db } from "../db/index.js";
 import { requireUser } from "../auth.js";
-import { EMBED_MODEL, embedTexts, geminiEnabled, readMenuAI } from "../lib/gemini.js";
+import { EMBED_MODEL, embedTexts, geminiEnabled, lastModel, readMenuAI } from "../lib/gemini.js";
 import { solanaEnabled } from "../lib/external.js";
 import { normalizePhoto } from "../lib/photo.js";
 import { putObject, stats as storageStats, storageProvider } from "../lib/storage.js";
@@ -62,7 +62,7 @@ extraRoutes.post("/spots/:id/menu", requireUser, upload.single("photo"), async (
   const cheapest = meals[0] ?? [...items].sort((a, b) => a.price - b.price)[0];
   await db.query(`UPDATE spots SET price_cents=$2, cheapest_item=$3, price_source='menu' WHERE id=$1`, [spot.id, Math.round(cheapest.price * 100), cheapest.name.slice(0, 80)]);
   putObject(`menus/${spot.id}/${Date.now()}.jpg`, photo, "image/jpeg", false).catch(() => {});
-  res.json({ spot: spot.name, items, cheapest, confidence: r.confidence, readBy: `Gemini (${config.gemini.model})` });
+  res.json({ spot: spot.name, items, cheapest, confidence: r.confidence, readBy: `Gemini (${lastModel ?? config.gemini.model})` });
 });
 
 extraRoutes.get("/spots/:id/menu", async (req, res) => {
@@ -141,7 +141,7 @@ extraRoutes.get("/proof", async (_req, res) => {
       rows: { checkins, train_positions: positions, train_predictions: predictions, line_metrics: metrics, spot_embeddings: embeddings, menu_items: menus },
       lastLineMetric: lastMetric?.ts ?? null,
     },
-    gemini: { enabled: geminiEnabled(), model: geminiEnabled() ? config.gemini.model : null, embedModel: EMBED_MODEL, uses: ["photo check-in", "menu reader", "listing scam scan", "search by meaning", "workflow understand/write", "translation", "tip screening"] },
+    gemini: { enabled: geminiEnabled(), model: geminiEnabled() ? `${config.gemini.model} (fallbacks: ${config.gemini.fallbacks.join(", ")}; last answered by ${lastModel ?? "none yet"})` : null, embedModel: EMBED_MODEL, uses: ["photo check-in", "menu reader", "listing scam scan", "search by meaning", "workflow understand/write", "translation", "tip screening"] },
     mastra: { lastRuns: lastRuns.slice(0, 2) },
     mbta: { vehicles: live.vehicles.length, vehiclesAt: live.vehiclesAt, alerts: live.alerts.length, lastError: live.lastError },
     storage: { provider: storageProvider(), ...storageStats },

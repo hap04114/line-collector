@@ -28,8 +28,9 @@ export const config = {
 
   gemini: {
     apiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || "",
-    model: process.env.GEMINI_MODEL || "gemini-flash-latest",
-    timeoutMs: num(process.env.GEMINI_TIMEOUT_MS, 9000),
+    model: process.env.GEMINI_MODEL || "gemini-3.5-flash",
+    fallbacks: (process.env.GEMINI_FALLBACK_MODELS || "gemini-3.1-flash-lite,gemini-flash-lite-latest").split(",").map((m) => m.trim()).filter(Boolean),
+    timeoutMs: num(process.env.GEMINI_TIMEOUT_MS, 12000),
   },
   mbta: {
     apiKey: process.env.MBTA_API_KEY || "",
