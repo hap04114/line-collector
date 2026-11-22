@@ -44,6 +44,8 @@ export const config = {
     from: process.env.EMAIL_FROM || "Line Collector <onboarding@resend.dev>",
   },
   rentcastKey: process.env.RENTCAST_API_KEY || "",
+  // Google Map Tiles API (Photorealistic 3D Tiles) for Street Runner; a browser key, restrict it by website
+  googleTilesKey: process.env.GOOGLE_MAPS_API_KEY || "",
   solana: {
     secretKey: process.env.SOLANA_SECRET_KEY || "",
     rpc: process.env.SOLANA_RPC || "https://api.devnet.solana.com",

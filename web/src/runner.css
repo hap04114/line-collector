@@ -65,7 +65,14 @@
 }
 @media (max-width: 640px) {
   /* phones: the next-stop bar sits under the score, the clock above the map credits */
-  .runner-next { top: calc(var(--safe-top, 0px) + 112px); max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
-  .runner.real .sr-mini { top: calc(var(--safe-top, 0px) + 150px); }
+  .runner-next { top: calc(var(--safe-top, 0px) + 150px); max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+  .runner.real .sr-mini { top: calc(var(--safe-top, 0px) + 196px); }
   .sr-clock { bottom: calc(var(--safe-bottom, 0px) + 128px); font-size: 13px; }
 }
+
+/* ---- Photoreal (Google Photorealistic 3D Tiles) ---- */
+.sr-photo { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; display: block; }
+.sr-google { position: absolute; right: 10px; bottom: calc(var(--safe-bottom, 0px) + 6px); z-index: 3; display: flex; align-items: center; gap: 6px;
+  max-width: 70vw; padding: 3px 8px; border-radius: 6px; background: rgba(0,0,0,.45); color: #fff; font: 500 10px/1.2 Inter, system-ui, sans-serif; pointer-events: none; }
+.sr-google img { height: 14px; width: auto; }
+.sr-google span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

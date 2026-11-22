@@ -20,6 +20,7 @@ authRoutes.get("/config", async (_req, res) => {
     gemini: geminiEnabled(),
     geminiModel: geminiEnabled() ? config.gemini.model : null,
     solana: solanaEnabled(),
+    googleTilesKey: config.googleTilesKey || null,
     database: db.timescale ? "Tiger Data (TimescaleDB)" : db.kind === "postgres" ? "Postgres" : "Embedded Postgres (PGlite)",
     timescale: db.timescale,
     schools: SCHOOLS.map((s) => ({ id: s.id, name: s.name, short: s.short, color: s.color, city: s.city, homeStations: s.homeStations, emailDomains: s.emailDomains, lat: s.lat, lon: s.lon })),
