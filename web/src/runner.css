@@ -76,3 +76,13 @@
   max-width: 70vw; padding: 3px 8px; border-radius: 6px; background: rgba(0,0,0,.45); color: #fff; font: 500 10px/1.2 Inter, system-ui, sans-serif; pointer-events: none; }
 .sr-google img { height: 14px; width: auto; }
 .sr-google span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- smoothness: no full-screen CSS filter pass in Photoreal (or on phones), hidden map canvas not composited ---- */
+.runner.photo .runner-stage { filter: none; }
+.runner.photo .runner-stage .maplibregl-canvas { visibility: hidden; }
+@media (pointer: coarse) { .runner.real .runner-stage { filter: none; } }
+/* five pad buttons (◀ ▲ ▼ ▶ 🚲) fit a phone */
+@media (max-width: 640px) {
+  .runner-pad { gap: 10px; }
+  .runner-pad button, .runner.real .runner-pad button { width: 56px !important; height: 56px !important; font-size: 22px; }
+}
