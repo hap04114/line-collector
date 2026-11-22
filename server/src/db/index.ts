@@ -42,10 +42,15 @@ export async function getDb(): Promise<Db> {
 }
 
 async function openPostgres(url: string): Promise<Db> {
+  // pg now treats sslmode=require as verify-full; keep TLS encryption but don't fail on the
+  // provider's certificate chain (the URL's sslmode would otherwise override our ssl option)
+  const wantsTls = /sslmode=(require|verify|prefer)/.test(url) || /tsdb\.cloud|timescale/.test(url);
+  const u = new URL(url);
+  u.searchParams.delete("sslmode");
   const pool = new pg.Pool({
-    connectionString: url,
+    connectionString: u.toString(),
     max: 8,
-    ssl: /sslmode=(require|verify)/.test(url) || /tsdb\.cloud|timescale/.test(url) ? { rejectUnauthorized: false } : undefined,
+    ssl: wantsTls ? { rejectUnauthorized: false } : undefined,
   });
   pool.on("error", (e) => console.error("[db] pool error", e.message));
   const query = async <T,>(sql: string, params?: unknown[]) => (await pool.query(sql, params as any[])).rows as T[];

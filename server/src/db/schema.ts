@@ -116,19 +116,6 @@ CREATE TABLE IF NOT EXISTS spots (
   checkin_radius_m int NOT NULL DEFAULT 150
 );
 CREATE INDEX IF NOT EXISTS spots_station_idx ON spots (station_id);
-ALTER TABLE spots ADD COLUMN IF NOT EXISTS diet text[] NOT NULL DEFAULT '{}';
-ALTER TABLE users ADD COLUMN IF NOT EXISTS rights_checked boolean NOT NULL DEFAULT false;
-ALTER TABLE redemptions ADD COLUMN IF NOT EXISTS solana_sig text;
-CREATE TABLE IF NOT EXISTS menu_items (
-  id text PRIMARY KEY,
-  spot_id text NOT NULL,
-  user_id text,
-  name text NOT NULL,
-  price_cents int NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS menu_items_spot_idx ON menu_items (spot_id);
-
 CREATE TABLE IF NOT EXISTS checkins (
   id text NOT NULL,
   ts timestamptz NOT NULL,
@@ -381,6 +368,20 @@ CREATE TABLE IF NOT EXISTS alerts_current (
   active_to timestamptz,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE spots ADD COLUMN IF NOT EXISTS diet text[] NOT NULL DEFAULT '{}';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS rights_checked boolean NOT NULL DEFAULT false;
+ALTER TABLE redemptions ADD COLUMN IF NOT EXISTS solana_sig text;
+CREATE TABLE IF NOT EXISTS menu_items (
+  id text PRIMARY KEY,
+  spot_id text NOT NULL,
+  user_id text,
+  name text NOT NULL,
+  price_cents int NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS menu_items_spot_idx ON menu_items (spot_id);
+
 `;
 
 const TIMESCALE: string[] = [
