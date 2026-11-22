@@ -610,6 +610,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
     const world = new THREE.Group(); // holds the tiles; slid each frame so the runner stays at the origin
     let photoR: THREE.WebGLRenderer | null = null, pcam: THREE.PerspectiveCamera | null = null, tiles: TilesRenderer | null = null;
     let photoCanvas: HTMLCanvasElement | null = null;
+    const fg = new THREE.Scene();
     let groundY = -26, groundFound = false, groundT = 0, creditT = 0; // Boston streets sit ~26 m under the WGS84 ellipsoid
     const ray = new THREE.Raycaster(), down = new THREE.Vector3(0, -1, 0), rayFrom = new THREE.Vector3(0, 400, 0);
     const onResize = () => {
@@ -637,6 +638,11 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       new THREE.Matrix4().makeRotationX(-Math.PI / 2).multiply(enu.invert()).decompose(tiles.group.position, tiles.group.quaternion, tiles.group.scale);
       world.add(tiles.group);
       scene.add(world);
+      // the runner is drawn in a last pass on top of the scanned city, so real trees never hide her
+      scene.remove(runner);
+      fg.add(runner, new THREE.HemisphereLight(0xffffff, 0x445566, 2.2));
+      const fgSun = new THREE.DirectionalLight(0xffffff, 1.6); fgSun.position.set(0.3, 1, 0.4); fg.add(fgSun);
+      photoR.autoClear = false;
       tiles.setCamera(pcam);
       tiles.setResolutionFromRenderer(pcam, photoR);
       window.addEventListener("resize", onResize);
@@ -652,10 +658,17 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
         world.updateMatrixWorld(true);
         ray.set(rayFrom, down); ray.far = 1200;
         const hits = ray.intersectObject(tiles.group, true);
-        if (hits.length) {
-          const g = hits[hits.length - 1].point.y - world.position.y;
-          if (!groundFound || Math.abs(g - groundY) < 30) { groundY = groundFound ? groundY + (g - groundY) * 0.6 : g; groundFound = true; }
+        // only trust surfaces near real street level: Boston streets sit ~26 m under the ellipsoid, the earth
+        // curves away from the start point, and hills/roofs rise above it. Coarse tiles that are still
+        // loading can reach far below the street, so anything outside this window is ignored.
+        const dx = (me.lon - lon0) * mLon(lat0), dz = (me.lat - lat0) * M_LAT;
+        const base = -26 - (dx * dx + dz * dz) / (2 * 6371000);
+        let g: number | null = null;
+        for (const h of hits) {
+          const y = h.point.y - world.position.y;
+          if (y > base - 35 && y < base + 260 && (g === null || y < g)) g = y;
         }
+        if (g !== null) { groundY = groundFound ? groundY + (g - groundY) * 0.5 : g; groundFound = true; }
       }
       world.position.set(-(me.lon - lon0) * mLon(lat0), -groundY, (me.lat - lat0) * M_LAT);
       // third-person camera behind and above the runner
@@ -666,7 +679,10 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       pcam.lookAt(fx * 20 + rx * side, 1, fz * 20 + rz * side);
       pcam.updateMatrixWorld();
       tiles.update();
+      photoR.clear();
       photoR.render(scene, pcam);
+      photoR.clearDepth();
+      photoR.render(fg, pcam);
       creditT += dt;
       if (creditT > 1) {
         creditT = 0;
