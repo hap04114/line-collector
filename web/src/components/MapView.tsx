@@ -10,7 +10,7 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 maplibregl.setWorkerUrl(workerUrl);
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import { useQuest, useStore } from "../store";
+import { useQuest, useQuests, useStore } from "../store";
 import { GameLayer3D } from "./GameLayer3D";
 
 const STYLES = { night: "https://tiles.openfreemap.org/styles/dark", day: "https://tiles.openfreemap.org/styles/liberty" };
@@ -37,9 +37,9 @@ export function MapView() {
   const [loaded, setLoaded] = useState(0); // bumps on every style load
   const [theme, setTheme] = useState<"night" | "day">(() => {
     try {
-      return (localStorage.getItem("lc-theme") as "night" | "day") || "night";
+      return (localStorage.getItem("lc-theme") as "night" | "day") || "day";
     } catch {
-      return "night";
+      return "day";
     }
   });
   const trains = useRef(new Map<string, { from: [number, number]; to: [number, number]; t0: number; color: string; route: string; label: string; bearing: number }>());
@@ -160,8 +160,6 @@ export function MapView() {
       data: fc((s.config?.schools ?? []).map((c) => pt(c.lon, c.lat, { id: c.id, name: c.name, short: c.short, color: c.color }))),
     });
     map.addLayer({ id: "lc-campus-halo", type: "circle", source: "lc-campuses", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 11, 14, 16, 60], "circle-color": ["get", "color"], "circle-opacity": 0.12, "circle-blur": 0.6 } });
-    map.addLayer({ id: "lc-campus-dots", type: "circle", source: "lc-campuses", paint: { "circle-radius": 7, "circle-color": ["get", "color"], "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
-    map.addLayer({ id: "lc-campus-labels", type: "symbol", source: "lc-campuses", layout: { "text-field": ["concat", "🎓 ", ["get", "short"]], "text-font": FONT, "text-size": 13, "text-offset": [0, 1.4], "text-anchor": "top" }, paint: { "text-color": ["get", "color"], "text-halo-color": "#0d0e12", "text-halo-width": 2 } });
 
     map.addSource("lc-stations", { type: "geojson", data: fc([]) });
     map.addLayer({ id: "lc-owner-ring", type: "circle", source: "lc-stations", filter: ["!=", ["get", "owner"], ""], paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 11, 6, 16, 15], "circle-color": "rgba(0,0,0,0)", "circle-stroke-color": ["get", "owner"], "circle-stroke-width": 2, "circle-stroke-opacity": 0.55 } });
@@ -228,6 +226,73 @@ export function MapView() {
       ),
     );
   }, [loaded, s.statics, s.mapState, s.me, s.stationId, s.justCollected, s.routeById, s.schoolById]);
+
+  // ---- map overlays: layer toggles, campus pills, quest bubbles, live status -------------------------
+  const [layers, setLayers] = useState({ is3d: true, trains: true, campuses: true, quests: true, delays: false });
+  const [panel, setPanel] = useState(false);
+  const [liveInfo, setLiveInfo] = useState<{ at: string | null; tempF: number | null; trains: number }>({ at: null, tempF: null, trains: 0 });
+  const quests = useQuests(5);
+  const campusMarkers = useRef<maplibregl.Marker[]>([]);
+  const questMarkers = useRef<maplibregl.Marker[]>([]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded) return;
+    for (const id of ["lc-trains", "lc-trains-glow"]) if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", layers.trains ? "visible" : "none");
+    if (map.getLayer("lc-lines"))
+      map.setPaintProperty("lc-lines", "line-color", layers.delays ? ["interpolate", ["linear"], ["get", "chaos"], 0, "#3ddc97", 35, "#ffb020", 65, "#ff3b3b"] : ["get", "color"]);
+    map.easeTo({ pitch: layers.is3d ? 55 : 0, duration: 600 });
+  }, [layers, loaded]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !s.config) return;
+    for (const m of campusMarkers.current) m.remove();
+    campusMarkers.current = [];
+    if (!layers.campuses) return;
+    for (const c of s.config.schools) {
+      const el = document.createElement("div");
+      el.className = `campus-pill${c.id === s.me?.user?.school?.id ? " mine" : ""}`;
+      el.innerHTML = `<i style="background:${c.color}"></i>${c.short}`;
+      el.title = c.name;
+      campusMarkers.current.push(new maplibregl.Marker({ element: el, anchor: "bottom" }).setLngLat([c.lon, c.lat]).addTo(map));
+    }
+  }, [s.config, layers.campuses, loaded, s.me?.user?.school?.id]);
+
+  const questKey = quests.map((q) => `${q.station.id}:${q.points}`).join(",");
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    for (const m of questMarkers.current) m.remove();
+    questMarkers.current = [];
+    if (!layers.quests) return;
+    quests.forEach((q, i) => {
+      const el = document.createElement("button");
+      el.className = `quest-pin${i === 0 ? " top" : ""}`;
+      el.innerHTML = `<span>${i === 0 ? "🎯" : "✨"}</span><b>+${q.points}</b>`;
+      el.title = `${q.station.name}: ${q.reasons.join(", ")}`;
+      el.onclick = (e) => {
+        e.stopPropagation();
+        sRef.current.openStation(q.station.id);
+        sRef.current.flyTo(q.station.lat, q.station.lon, 15.5);
+      };
+      questMarkers.current.push(new maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, -14] }).setLngLat([q.station.lon, q.station.lat]).addTo(map));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questKey, layers.quests, loaded]);
+
+  useEffect(() => {
+    const load = () =>
+      api.get("/lines/status").then((r) => setLiveInfo((x) => ({ ...x, at: r.updatedAt, tempF: r.weather?.tempF ?? null }))).catch(() => {});
+    load();
+    const t = setInterval(() => {
+      load();
+      setLiveInfo((x) => ({ ...x, trains: trains.current.size }));
+    }, 15_000);
+    const t2 = setTimeout(() => setLiveInfo((x) => ({ ...x, trains: trains.current.size })), 4000);
+    return () => { clearInterval(t); clearTimeout(t2); };
+  }, []);
+  const ago = liveInfo.at ? Math.max(0, Math.round((Date.now() - new Date(liveInfo.at).getTime()) / 1000)) : null;
 
   // ---- Three.js game layer: tokens, beacons, quest ring, 3D trains -----------------------------
   const quest = useQuest();
@@ -305,9 +370,25 @@ export function MapView() {
   return (
     <>
       <div ref={el} className="map" aria-label="Map of Boston T stations" />
-      <div style={{ position: "absolute", right: 10, bottom: "calc(var(--safe-bottom) + 200px)", zIndex: 4, display: "flex", flexDirection: "column", gap: 8 }}>
-        <button className="icon-btn" title="Game tokens on the map" onClick={() => setShow3d(!show3d)} style={show3d ? { borderColor: "var(--accent)" } : undefined}>🪙</button>
-        <button className="icon-btn" title="Day / night map" onClick={() => setTheme(theme === "night" ? "day" : "night")}>{theme === "night" ? "☀️" : "🌙"}</button>
+      <div style={{ position: "absolute", right: 10, bottom: "calc(var(--safe-bottom) + 200px)", zIndex: 4, display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
+        {panel && (
+          <div className="layer-panel">
+            <div className="live-pill"><span className="live-dot" />LIVE · {liveInfo.trains || "…"} trains{ago != null ? ` · ${ago < 90 ? `${ago}s` : `${Math.round(ago / 60)}m`} ago` : ""}{liveInfo.tempF != null ? ` · ${Math.round(liveInfo.tempF)}°F` : ""}</div>
+            <div className="seg" style={{ padding: 3 }}>
+              <button className={layers.is3d ? "on" : ""} onClick={() => setLayers({ ...layers, is3d: true })}>3D</button>
+              <button className={!layers.is3d ? "on" : ""} onClick={() => setLayers({ ...layers, is3d: false })}>2D</button>
+            </div>
+            <div className="seg" style={{ padding: 3 }}>
+              <button className={theme === "day" ? "on" : ""} onClick={() => setTheme("day")}>Illustrated</button>
+              <button className={theme === "night" ? "on" : ""} onClick={() => setTheme("night")}>Night</button>
+            </div>
+            {([["trains", "Live trains"], ["campuses", "Campuses"], ["quests", "Quests"], ["delays", "Color lines by delay"]] as const).map(([k, label]) => (
+              <label key={k} className="check"><input type="checkbox" checked={layers[k]} onChange={(e) => setLayers({ ...layers, [k]: e.target.checked })} /><span>{label}</span></label>
+            ))}
+            <label className="check"><input type="checkbox" checked={show3d} onChange={(e) => setShow3d(e.target.checked)} /><span>3D tokens</span></label>
+          </div>
+        )}
+        <button className="icon-btn" title="Map layers" onClick={() => setPanel(!panel)} style={panel ? { borderColor: "var(--accent)" } : undefined}>🗂️</button>
         <button className="icon-btn" title="My location" onClick={() => (s.pos ? s.flyTo(s.pos.lat, s.pos.lon, 15.5) : s.toast(s.geoError || "Waiting for GPS…"))}>🎯</button>
       </div>
     </>

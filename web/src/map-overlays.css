@@ -1,0 +1,13 @@
+/* ---- map overlays: campus pills, quest bubbles, layers panel ---- */
+.campus-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 7px; background: #fff; color: #1b1d24; border: 2px solid #1b1d24; border-radius: 999px; font: 800 12px/1.2 Inter, system-ui, sans-serif; box-shadow: 0 3px 10px rgba(0,0,0,.25); white-space: nowrap; pointer-events: auto; }
+.campus-pill i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; border: 1.5px solid #1b1d24; }
+.campus-pill.mine { background: #F7DD04; }
+.quest-pin { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: 999px; background: #fff7cc; color: #3a2c00; border: 2px solid #c79a00; font: 800 13px/1 Inter, system-ui, sans-serif; box-shadow: 0 4px 14px rgba(0,0,0,.3); cursor: pointer; animation: questBob 2.4s ease-in-out infinite; }
+.quest-pin.top { background: #F7DD04; border-color: #1b1d24; font-size: 14px; padding: 6px 12px; }
+.quest-pin span { font-size: 15px; }
+@keyframes questBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+.layer-panel { width: 230px; background: rgba(22, 23, 29, .96); border: 1px solid var(--line); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 12px 30px rgba(0,0,0,.45); }
+.layer-panel .check { font-size: 14px; }
+.live-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 800; color: #fff; background: #0C6B14; border-radius: 8px; padding: 6px 8px; }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: #7CFC00; animation: lpblink 1.2s steps(2) infinite; }
+@media (prefers-reduced-motion: reduce) { .quest-pin { animation: none; } }

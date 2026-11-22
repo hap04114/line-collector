@@ -167,10 +167,11 @@ export interface Quest { station: Station; points: number; reasons: string[]; di
  * Next quest: the uncollected stop with the best points-per-distance, using the same
  * rules as the server's scoring (new stop, new line, new neighborhood, Blue Line, away game).
  */
-export function useQuest(): Quest | null {
+/** Uncollected stops ranked by points per distance, using the server's scoring rules. */
+export function useQuests(n = 5): Quest[] {
   const s = useStore();
   return useMemo(() => {
-    if (!s.statics || !s.mapState || !s.me) return null;
+    if (!s.statics || !s.mapState || !s.me) return [];
     const collected = new Set(s.mapState.collected);
     const myLines = new Set<string>();
     for (const id of collected) for (const r of s.stationById.get(id)?.routes ?? []) myLines.add(r);
@@ -178,9 +179,8 @@ export function useQuest(): Quest | null {
     const mySchool = s.me.user.school.id;
     const home = s.config?.schools.find((c) => c.id === mySchool);
     const from = s.pos ?? (home ? { lat: home.lat, lon: home.lon } : null);
-    if (!from) return null;
-    let best: Quest | null = null;
-    let bestScore = -1;
+    if (!from) return [];
+    const out: (Quest & { score: number })[] = [];
     for (const st of s.statics.stations) {
       if (collected.has(st.id)) continue;
       const reasons = ["+100 new stop"];
@@ -191,9 +191,12 @@ export function useQuest(): Quest | null {
       const away = s.config?.schools.find((c) => c.id !== mySchool && (c.homeStations.includes(st.id) || haversine(st.lat, st.lon, c.lat, c.lon) < 900));
       if (away) { pts *= 2; reasons.push(`x2 away game at ${away.short}`); }
       const d = haversine(from.lat, from.lon, st.lat, st.lon);
-      const score = pts / (1 + d / 1500);
-      if (score > bestScore) { bestScore = score; best = { station: st, points: pts, reasons, distanceM: d }; }
+      out.push({ station: st, points: pts, reasons, distanceM: d, score: pts / (1 + d / 1500) });
     }
-    return best;
-  }, [s.statics, s.mapState, s.me, s.pos, s.config, s.stationById, s.routeById, s.nbById]);
+    return out.sort((a, b) => b.score - a.score).slice(0, n);
+  }, [s.statics, s.mapState, s.me, s.pos, s.config, s.stationById, s.routeById, s.nbById, n]);
+}
+
+export function useQuest(): Quest | null {
+  return useQuests(5)[0] ?? null;
 }

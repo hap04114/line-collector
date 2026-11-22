@@ -10,7 +10,7 @@ import { api } from "./api";
 import { MapView } from "./components/MapView";
 import { StationSheet } from "./components/StationSheet";
 import { CheckinFlow } from "./components/CheckinFlow";
-import { SignIn } from "./views/SignIn";
+import { Landing } from "./views/Landing";
 import { BoardView } from "./views/BoardView";
 import { PlanView } from "./views/PlanView";
 import { MeView } from "./views/MeView";
@@ -55,7 +55,7 @@ function Shell() {
   }, [s.statics]);
 
   if (!s.config) return <div className="signin"><div className="signin-wrap"><div className="logo">Line <i>Collector</i></div><p className="muted">Loading…</p></div></div>;
-  if (!s.me && !s.signedOutBrowse) return <SignIn />;
+  if (!s.me && !s.signedOutBrowse) return <Landing />;
 
   return (
     <div className="app">
