@@ -12,7 +12,7 @@ import { HttpError, firstName, rateLimit } from "../lib/util.js";
 import { BADGES } from "../services/badges.js";
 import { checkIn, partnerStamps, streakStatus } from "../services/checkin.js";
 import { activeEvents } from "../services/events.js";
-import { CRAVINGS, VIBES, findSpots, getSpot } from "../services/spots.js";
+import { CRAVINGS, VIBES, findSpots, getSpot, nearbySpots } from "../services/spots.js";
 import { lineStatuses } from "../services/transit.js";
 
 export const gameRoutes = Router();
@@ -324,4 +324,29 @@ gameRoutes.get("/events", async (_req, res) => {
   const active = await activeEvents(db);
   const upcoming = await db.query("SELECT * FROM events WHERE starts_at > now() AND kind <> 'partner' ORDER BY starts_at LIMIT 6");
   res.json({ active: active.filter((e) => e.kind !== "partner" || true), upcoming });
+});
+
+/** Find: food or study spots near a point (GPS, or the student's campus when GPS is off). */
+gameRoutes.get("/find", async (req, res) => {
+  const db = await getDb();
+  let lat = Number(req.query.lat), lon = Number(req.query.lon);
+  let origin = "gps";
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    const sc = schoolById(req.user?.school_id ?? "neu")!;
+    lat = sc.lat;
+    lon = sc.lon;
+    origin = `campus:${sc.short}`;
+  }
+  const kind = req.query.kind === "study" ? "study" : "food";
+  const r = await nearbySpots(db, {
+    lat, lon, kind,
+    budgetCents: req.query.budget ? Math.round(Number(req.query.budget) * 100) : undefined,
+    craving: req.query.craving ? String(req.query.craving) : undefined,
+    text: req.query.q ? String(req.query.q).slice(0, 60) : undefined,
+    openNow: req.query.openNow === "true" || req.query.openNow === "1",
+    homeRegions: req.user?.home_regions ?? [],
+    userId: req.user?.id ?? null,
+    radiusM: Math.min(4000, Number(req.query.radius) || 1600),
+  });
+  res.json({ origin, lat, lon, kind, ...r });
 });

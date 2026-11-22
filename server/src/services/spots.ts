@@ -86,7 +86,7 @@ export function decorate(s: any, now = new Date()) {
 }
 
 const SPOT_SELECT = `
-  SELECT s.*, p.id AS partner_id, p.is_sample AS partner_is_sample, o.title AS offer_title, o.stamps_needed,
+  SELECT s.*, $1::text AS _unused, p.id AS partner_id, p.is_sample AS partner_is_sample, o.title AS offer_title, o.stamps_needed,
          r.outlets AS r_outlets, r.noise AS r_noise, r.wifi AS r_wifi, r.n AS r_n,
          EXISTS (SELECT 1 FROM checkins c WHERE c.spot_id = s.id AND c.user_id = $2 AND c.verified IN ('verified','unchecked')) AS visited
   FROM spots s
@@ -160,3 +160,33 @@ async function nearestStationWithSpots(q: Queryable, opt: SpotQuery, budget: num
 }
 
 export const allStationIds = () => STATIONS.map((s) => s.id);
+
+/** Spots near a point (any station), for the Find search: food or study, sorted by walking distance. */
+export async function nearbySpots(
+  q: Queryable,
+  opt: { lat: number; lon: number; kind: "food" | "study"; budgetCents?: number; craving?: string; text?: string; openNow?: boolean; homeRegions?: string[]; userId?: string | null; radiusM?: number; limit?: number },
+) {
+  const r = opt.radiusM ?? 1600;
+  const dLat = r / 111_000, dLon = r / (111_000 * Math.cos((opt.lat * Math.PI) / 180));
+  const rows = await q.query(
+    `${SPOT_SELECT} WHERE s.lat BETWEEN $3 AND $4 AND s.lon BETWEEN $5 AND $6`,
+    [null, opt.userId ?? null, opt.lat - dLat, opt.lat + dLat, opt.lon - dLon, opt.lon + dLon],
+  );
+  const now = new Date();
+  let list = rows.map((row: any) => {
+    const d = decorate(row, now);
+    const dist = haversineM(opt.lat, opt.lon, row.lat, row.lon);
+    return { ...d, distanceM: Math.round(dist), walkMin: walkMinutes(dist), station: stationById.get(row.station_id)?.name ?? null };
+  });
+  if (opt.kind === "study") list = list.filter((x) => x.study || x.kind === "study");
+  else list = list.filter((x) => x.kind === "food" || x.kind === "landmark" || x.kind === "hangout");
+  if (opt.kind === "food" && opt.budgetCents) list = list.filter((x) => x.priceCents <= opt.budgetCents!);
+  if (opt.craving) list = list.filter((x) => matchesCraving(x, opt.craving!, opt.homeRegions || []));
+  if (opt.text) {
+    const t = opt.text.toLowerCase();
+    list = list.filter((x) => x.name.toLowerCase().includes(t) || x.cuisines.some((c: string) => c.includes(t)) || (x.station ?? "").toLowerCase().includes(t));
+  }
+  if (opt.openNow) list = list.filter((x) => x.openNow === true);
+  list.sort((a, b) => a.distanceM - b.distanceM);
+  return { total: list.length, spots: list.slice(0, opt.limit ?? 40) };
+}

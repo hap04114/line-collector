@@ -32,7 +32,7 @@ arcadeRoutes.post("/arcade/score", requireUser, async (req, res) => {
   if (!rateLimit(`arcade:${req.user.id}`, 30, 10 * 60_000)) throw new HttpError(429, "Too many runs, take a break");
   const distance = Math.min(b.distance, (b.durationMs / 1000) * MAX_SPEED);
   const tokens = Math.min(b.tokens, Math.floor(distance / 6));
-  const stations = Math.min(b.stations, Math.floor(distance / 200) + 1);
+  const stations = Math.min(b.stations, Math.floor(distance / 120) + 2);
   const score = arcadeScore(distance, tokens, stations);
   const db = await getDb();
   const best = await db.one(`SELECT max(score)::int AS best FROM arcade_scores WHERE user_id=$1 AND route_id=$2`, [req.user.id, b.routeId]);

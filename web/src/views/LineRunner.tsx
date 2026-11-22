@@ -11,6 +11,10 @@ import { LinePill, useStore } from "../store";
 
 type Kind = "barrier" | "cone" | "bus" | "token" | "shield";
 interface Thing { mesh: THREE.Object3D; lane: number; z: number; kind: Kind; len: number; h: number; alive: boolean }
+interface Corridor {
+  routeId: string; step: number; offsets: number[]; lengthM: number; L: number[]; R: number[];
+  stations: { id: string; name: string; s: number }[]; landmarks: { name: string; s: number; side: number }[];
+}
 interface Hud { score: number; tokens: number; distance: number; next: string; stations: number; shield: number; speed: number }
 
 const LANES = [-2.4, 0, 2.4];
@@ -73,6 +77,11 @@ export function LineRunner({ onClose, initialLine }: { onClose: () => void; init
   const [flash, setFlash] = useState<string | null>(null);
   const controls = useRef({ left: () => {}, right: () => {}, jump: () => {} });
   const route = s.routeById.get(line);
+  const [corridor, setCorridor] = useState<Corridor | null>(null);
+  useEffect(() => {
+    setCorridor(null);
+    fetch(`/runner/${line}.json`).then((r) => (r.ok ? r.json() : null)).then(setCorridor).catch(() => setCorridor(null));
+  }, [line]);
 
   useEffect(() => {
     api.get(`/arcade/top?line=${line}`).then(setTop).catch(() => {});
@@ -95,9 +104,10 @@ export function LineRunner({ onClose, initialLine }: { onClose: () => void; init
     renderer.shadowMap.enabled = true;
     el.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color("#0b0d14");
-    scene.fog = new THREE.Fog("#0b0d14", 40, 150);
-    const camera = new THREE.PerspectiveCamera(62, el.clientWidth / el.clientHeight, 0.1, 400);
+    const C = corridor; // real-city mode when the corridor loaded
+    scene.background = new THREE.Color(C ? "#151a2b" : "#0b0d14");
+    scene.fog = new THREE.Fog(C ? "#151a2b" : "#0b0d14", C ? 70 : 40, C ? 340 : 150);
+    const camera = new THREE.PerspectiveCamera(62, el.clientWidth / el.clientHeight, 0.1, 800);
     scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x10121a, 1.2));
     const sun = new THREE.DirectionalLight(0xffffff, 1.6);
     sun.position.set(6, 14, 4);
@@ -109,6 +119,10 @@ export function LineRunner({ onClose, initialLine }: { onClose: () => void; init
     scene.add(glow);
 
     // ---- ground, rails ----------------------------------------------------------------
+    const city = new THREE.Mesh(new THREE.PlaneGeometry(400, 800), new THREE.MeshStandardMaterial({ color: 0x12141b, roughness: 1 }));
+    city.rotation.x = -Math.PI / 2;
+    city.position.y = -0.02;
+    scene.add(city);
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(14, 400), new THREE.MeshStandardMaterial({ color: 0x1b1e28, roughness: 0.9 }));
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
@@ -134,7 +148,7 @@ export function LineRunner({ onClose, initialLine }: { onClose: () => void; init
     // ---- buildings (recycled) -----------------------------------------------------------
     const winTex = windowsTexture();
     const buildings: THREE.Mesh[] = [];
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < (C ? 0 : 40); i++) {
       const w = 4 + Math.random() * 5, h = 6 + Math.random() * 22, d = 6 + Math.random() * 8;
       const tex = winTex.clone();
       tex.repeat.set(Math.max(1, Math.round(w / 3)), Math.max(1, Math.round(h / 6)));
@@ -225,7 +239,92 @@ export function LineRunner({ onClose, initialLine }: { onClose: () => void; init
       return names[stIdx];
     };
     let nextStationZ = -60;
-    addStation(nextStationZ, nextName());
+    if (!C) addStation(nextStationZ, nextName());
+
+    // ---- real city: buildings from OSM massing, stations and landmarks at real distances ----
+    const Len = C?.lengthM ?? 1;
+    const homeStop = C?.stations.find((x) => home.includes(x.id));
+    const startS = C ? Math.max(0, (homeStop?.s ?? 0) - 120) : 0;
+    const linePos = (r: number) => {
+      const u = startS + r, k = Math.floor(u / Len), w = u - k * Len;
+      return k % 2 === 0 ? { p: w, dir: 1 } : { p: Len - w, dir: -1 };
+    };
+    type Ev = { r: number; name: string; kind: "station" | "landmark" | "end"; side: number };
+    const events: Ev[] = [];
+    if (C) {
+      for (let k = 0; k < 6; k++) {
+        const base = k * Len - startS, fw = k % 2 === 0;
+        for (const x of C.stations) events.push({ r: base + (fw ? x.s : Len - x.s), name: x.name, kind: "station", side: 0 });
+        for (const x of C.landmarks) events.push({ r: base + (fw ? x.s : Len - x.s), name: x.name, kind: "landmark", side: fw ? x.side : -x.side });
+        events.push({ r: base + Len, name: "", kind: "end", side: 0 });
+      }
+      events.sort((a, b) => a.r - b.r);
+    }
+    const stationRuns = events.filter((e) => e.kind === "station").map((e) => e.r);
+    let evIdx = events.findIndex((e) => e.r > 25);
+    if (evIdx < 0) evIdx = events.length;
+    const endZs: number[] = [];
+    const hash = (n: number) => { const x = Math.sin(n * 127.1) * 43758.5453; return x - Math.floor(x); };
+    const unitBox = new THREE.BoxGeometry(1, 1, 1);
+    unitBox.translate(0, 0.5, 0);
+    const WIDTHS = [17, 22, 28];
+    const matCache = new Map<string, THREE.Material>();
+    const matFor = (w: number, h: number) => {
+      const hb = Math.max(1, Math.round(h / 4));
+      const key = `${w}-${hb}`;
+      let mt = matCache.get(key);
+      if (!mt) {
+        const tex = winTex.clone();
+        tex.repeat.set(Math.max(1, Math.round(w / 3.2)), Math.max(1, Math.round((hb * 4) / 3.5)));
+        tex.needsUpdate = true;
+        mt = new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.5, roughness: 0.85 });
+        matCache.set(key, mt);
+      }
+      return mt;
+    };
+    const trunkGeo = new THREE.CylinderGeometry(0.25, 0.3, 2.2, 6), crownGeo = new THREE.ConeGeometry(2.2, 5, 8);
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3524 }), crownMat = new THREE.MeshStandardMaterial({ color: 0x2f6b3a, roughness: 0.9 });
+    const slices = new Map<number, THREE.Object3D[]>();
+    const buildSlice = (k: number) => {
+      if (!C) return;
+      const r = k * C.step;
+      const { p, dir } = linePos(r);
+      const i = Math.min(Math.floor(p / C.step), C.L.length / 3 - 1);
+      const objs: THREE.Object3D[] = [];
+      for (const side of [-1, 1]) {
+        const arr = (side === -1) === (dir === 1) ? C.L : C.R;
+        for (let j = 0; j < 3; j++) {
+          const v = arr[i * 3 + j];
+          const x = side * (C.offsets[j] + 4 + (hash(k * 3 + j + side) - 0.5) * 3);
+          if (v > 0) {
+            const w = WIDTHS[j];
+            const b = new THREE.Mesh(unitBox, matFor(w, v));
+            b.scale.set(w, v, C.step * (0.75 + hash(k + j) * 0.2));
+            b.position.set(x, 0, -r - C.step / 2);
+            scene.add(b);
+            objs.push(b);
+          } else if (v < 0 && j < 2 && hash(k * 5 + j * 11 + side) < 0.4) {
+            const tree = new THREE.Group();
+            const tr = new THREE.Mesh(trunkGeo, trunkMat);
+            tr.position.y = 1.1;
+            const cr = new THREE.Mesh(crownGeo, crownMat);
+            cr.position.y = 4.2;
+            tree.add(tr, cr);
+            tree.position.set(side * (10 + hash(k * 9 + j) * 12), 0, -r - hash(k + 3) * C.step);
+            scene.add(tree);
+            objs.push(tree);
+          }
+        }
+      }
+      slices.set(k, objs);
+    };
+    const landmarkGroups: THREE.Object3D[] = [];
+    const addLandmark = (z: number, name: string, side: number) => {
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(14, 3.2), new THREE.MeshBasicMaterial({ map: labelTexture(`📍 ${name}`, "#ffd23f", "#10130a"), transparent: true, side: THREE.DoubleSide }));
+      sign.position.set((side || 1) * 26, 22, z);
+      scene.add(sign);
+      landmarkGroups.push(sign);
+    };
 
     // ---- state ------------------------------------------------------------------------------
     const st = { lane: 1, x: 0, y: 0, vy: 0, z: 0, speed: 14, dist: 0, tokens: 0, stations: 0, shield: 0, over: false, nextSpawn: -40, t0: performance.now() };
@@ -325,13 +424,32 @@ export function LineRunner({ onClose, initialLine }: { onClose: () => void; init
         }
       sleepers.instanceMatrix.needsUpdate = true;
       for (const b of buildings) if (b.position.z > st.z + 15) b.position.z -= 40 * 9;
+      city.position.z = st.z - 300;
+      if (C) {
+        const kMin = Math.max(0, Math.floor(st.dist / C.step) - 3), kMax = Math.floor((st.dist + 330) / C.step);
+        for (let k = kMin; k <= kMax; k++) if (!slices.has(k)) buildSlice(k);
+        for (const [k, objs] of slices) if (k < kMin) { for (const o of objs) scene.remove(o); slices.delete(k); }
+        while (evIdx < events.length && events[evIdx].r < st.dist + 330) {
+          const ev = events[evIdx++];
+          if (ev.kind === "station") addStation(-ev.r, ev.name);
+          else if (ev.kind === "landmark") addLandmark(-ev.r, ev.name, ev.side);
+          else endZs.push(-ev.r);
+        }
+        if (endZs.length && st.z < endZs[0]) {
+          endZs.shift();
+          setFlash("🔁 End of the line! Heading back");
+          setTimeout(() => setFlash(null), 1600);
+        }
+        for (let i = landmarkGroups.length - 1; i >= 0; i--) if (landmarkGroups[i].position.z > st.z + 40) { scene.remove(landmarkGroups[i]); landmarkGroups.splice(i, 1); }
+      }
 
       // spawning ahead
       while (st.nextSpawn > st.z - 130) {
-        if (Math.abs(st.nextSpawn - nextStationZ) > 22) spawnRow(st.nextSpawn);
+        const nearStation = C ? stationRuns.some((r) => Math.abs(-r - st.nextSpawn) < 26) : Math.abs(st.nextSpawn - nextStationZ) <= 22;
+        if (!nearStation) spawnRow(st.nextSpawn);
         st.nextSpawn -= 16 + Math.random() * 10 - Math.min(6, st.speed / 8);
       }
-      if (nextStationZ > st.z - 160) {
+      if (!C && nextStationZ > st.z - 160) {
         nextStationZ -= STATION_EVERY;
         addStation(nextStationZ, nextName());
       }
@@ -394,7 +512,7 @@ export function LineRunner({ onClose, initialLine }: { onClose: () => void; init
         const upcoming = stationGroups.find((g) => !g.counted);
         setHud({
           score: Math.round(st.dist) + st.tokens * 10 + st.stations * 50, tokens: st.tokens, distance: Math.round(st.dist),
-          next: upcoming?.name ?? "", stations: st.stations, shield: Math.ceil(st.shield), speed: Math.round(st.speed * 3.6),
+          next: upcoming ? `${upcoming.name} · ${Math.max(0, Math.round(st.z - upcoming.z))} m` : "", stations: st.stations, shield: Math.ceil(st.shield), speed: Math.round(st.speed * 3.6),
         });
       }
       renderer.render(scene, camera);
@@ -415,7 +533,7 @@ export function LineRunner({ onClose, initialLine }: { onClose: () => void; init
       el.removeChild(renderer.domElement);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, line]);
+  }, [phase, line, corridor]);
 
   const start = () => {
     setResult(null);
@@ -450,7 +568,8 @@ export function LineRunner({ onClose, initialLine }: { onClose: () => void; init
             <>
               <div className="logo" style={{ fontSize: 28 }}>Line <i>Runner</i></div>
               <p className="small muted" style={{ margin: 0 }}>
-                Run your T line. Dodge shuttle buses, jump DELAY barriers and cones, grab tokens, and pass the line's real stations (+50 each).
+                Run your real T line through the real city: buildings at their real heights from OpenStreetMap, stations at their real spacing, landmarks along the way.
+                Dodge shuttle buses, jump DELAY barriers and cones, grab tokens, +50 per station.
                 ← → / A D to switch lanes, ↑ / W / Space to jump, or swipe.
               </p>
             </>
@@ -469,6 +588,7 @@ export function LineRunner({ onClose, initialLine }: { onClose: () => void; init
               <button key={r.id} className={`chip ${line === r.id ? "on" : ""}`} onClick={() => setLine(r.id)}><LinePill id={r.id} /> {r.short}</button>
             ))}
           </div>
+          <div className="tiny muted">{corridor ? `${route?.short}: ${(corridor.lengthM / 1000).toFixed(1)} km of real Boston · ${corridor.stations.length} stations · ${corridor.landmarks.length} landmarks` : "Loading the real city…"}</div>
           <button className="btn primary block" onClick={start}>{phase === "ready" ? "▶ Start run" : "↻ Run again"}</button>
           {top && (top.players.length > 0 || top.schools.length > 0) && (
             <div className="col" style={{ gap: 6 }}>

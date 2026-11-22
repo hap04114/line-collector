@@ -22,7 +22,8 @@
     "bake:spots": "tsx scripts/bake-spots.ts",
     "bake:rent": "tsx scripts/bake-rent.ts",
     "bake:vibes": "tsx scripts/bake-vibes.ts",
-    "solana:wallet": "tsx scripts/solana-wallet.ts"
+    "solana:wallet": "tsx scripts/solana-wallet.ts",
+    "bake:runner": "tsx scripts/bake-runner.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.124",

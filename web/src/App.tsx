@@ -3,6 +3,7 @@ import { fmtDist, haversine } from "./api";
 import { useI18n } from "./i18n";
 import { nearestStation, StoreProvider, useQuest, useStore, type Mode } from "./store";
 import { LineRunner } from "./views/LineRunner";
+import { FindView } from "./views/FindView";
 import { MapView } from "./components/MapView";
 import { StationSheet } from "./components/StationSheet";
 import { CheckinFlow } from "./components/CheckinFlow";
@@ -44,6 +45,7 @@ function Shell() {
       {s.panel === "me" && <MeView />}
       {s.panel === "live" && <LiveView />}
       {s.panel === "ride" && <RideView />}
+      {s.panel === "find" && <FindView />}
       {s.checkinSpot && <CheckinFlow />}
       {!s.panel && !s.stationId && !s.checkinSpot && s.me && <QuestCard />}
       <BottomNav />
@@ -110,6 +112,7 @@ function TopBar() {
         ))}
         <button className="chip accent run-chip" onClick={() => (s.me ? s.setPanel("run") : s.setSignedOutBrowse(false))}>🎮 Line Runner</button>
       </div>
+      <button className="searchbar" onClick={() => { s.openStation(null); s.setPanel("find"); }}>🔍 <span>Find food or a study spot near you</span></button>
       {near && (
         <button className="nearest" onClick={() => { s.openStation(near.station.id); s.flyTo(near.station.lat, near.station.lon, 15.5); }}>
           📍 {t("nearest")}: <b>{near.station.name}</b> · {fmtDist(near.distanceM)}
