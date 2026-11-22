@@ -49,7 +49,7 @@ function trainTexture(color: string) {
   for (let x = 14; x < 256; x += 42) { g.fillRect(x, 30, 22, 14); }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
-interface Thing { s: number; lane: number; kind: Kind; alive: boolean; mesh: THREE.Object3D; len: number; h: number; v?: number }
+interface Thing { s: number; lane: number; kind: Kind; alive: boolean; mesh: THREE.Object3D; len: number; h: number; v?: number; lift?: number }
 
 /** A LOW BRIDGE sign on two posts: you roll under it (2.6 tall, centred on its middle like the other pieces). */
 function gateGeometry() {
@@ -203,6 +203,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
   const autoStart = useRef(false);
   const [hud, setHud] = useState({ score: 0, tokens: 0, distance: 0, next: "", street: "", shield: 0, bike: 0, bikeCd: 0, kmh: 0, count: 0, clock: "", eta: "" });
   const [flash, setFlash] = useState<string | null>(null);
+  const [crash, setCrash] = useState("");
   const [credit, setCredit] = useState<{ logo: string; text: string } | null>(null);
   const tilesKey = s.config?.googleTilesKey ?? null;
   const [result, setResult] = useState<any>(null);
@@ -491,11 +492,11 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       marks.push({ s: pr.s, side, mesh: m, name, shown: false });
     }
 
-    const state = { run: 0, lane: 1, x: 0, y: 0, vy: 0, speed: 18, tokens: 0, stations: 0, shield: 0, bike: 0, bikeCd: 0, roll: 0, jumpBuf: 0, landT: 0, slam: false, over: false, nextSpawn: 150, t0: performance.now(), bearing: 0 };
+    const state = { run: 0, lane: 1, x: 0, y: 0, vy: 0, speed: 18, tokens: 0, stations: 0, shield: 0, bike: 0, bikeCd: 0, roll: 0, jumpBuf: 0, landT: 0, slam: false, floor: 0, over: false, nextSpawn: 150, t0: performance.now(), bearing: 0 };
     let mapReady = false;
     let started = autoStart.current;
     let goAt = Infinity; // 3-2-1 countdown ends here
-    let gateHinted = false;
+    let gateHinted = false, roofHinted = false;
     const doJump = () => { state.vy = JUMP_V; state.roll = 0; state.jumpBuf = 0; state.slam = false; };
     // fairness: an oncoming train sweeps back over rows already placed, so it may only use a lane that no
     // upcoming row leaves free, and new rows keep their free lane off any lane an oncoming train is in
@@ -522,6 +523,12 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
           if (Math.random() < 0.45 && state.run > 150 && !laneIsSomeonesExit) v = 9;
         }
         things.push({ s: r + (v ? 60 : 0), lane, kind, alive: true, mesh, v, len: kind === "train" ? 22 : kind === "bus" ? 9 : 0.8, h: kind === "barrier" ? 1 : kind === "cone" ? 1.1 : kind === "train" ? 3.4 : kind === "gate" ? 2.6 : 3 });
+        if (kind === "train" && !v) {
+          for (let i = 0; i < 5; i++) {
+            const cm = new THREE.Mesh(geo.token, mats.token); cm.scale.setScalar(SCALE); scene.add(cm);
+            things.push({ s: r - 8 + i * 4, lane, kind: "token", alive: true, mesh: cm, len: 1, h: 0, lift: 3.4 });
+          }
+        }
       }
       const extra: Kind = Math.random() < 0.06 && state.run > 400 ? "shield" : "token";
       for (let i = 0; i < (extra === "token" ? 6 : 1); i++) {
@@ -565,11 +572,12 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
         const nowR = performance.now();
         const rdt = Math.min(0.1, (nowR - lastRender) / 1000);
         lastRender = nowR;
-        const air = state.y > 0.05;
+        const above = state.y - state.floor; // height above the street or the roof you're on
+        const air = above > 0.05;
         const rolling = state.roll > 0 && !onBike;
         const rp = rolling ? 1 - state.roll / ROLL_T : 0; // 0 -> 1 through the roll
         const wR = rolling ? Math.min(1, Math.sin(Math.PI * rp) * 2.5) : 0;
-        const wJ = !onBike && air ? Math.min(1, state.y / 0.8) : 0; // tuck as you rise
+        const wJ = !onBike && air ? Math.min(1, above / 0.8) : 0; // tuck as you rise
         // roll: spin around the middle, curl up, lower the pivot so the ball stays on the street
         rollPivot.rotation.x = rolling ? rp * Math.PI * 2 : 0;
         rollPivot.position.y = PIV - wR * 0.75;
@@ -599,7 +607,8 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
         const ph = state.run * (onBike ? 0.38 : 0.45);
         const sw = Math.sin(ph);
         bike.visible = onBike;
-        shadow.scale.setScalar(RSCALE * (onBike ? 1.5 : rolling ? 0.8 : 1) * Math.max(0.45, 1 - visY / (RSCALE * 3)));
+        shadow.position.y = state.floor * SCALE + 0.08;
+        shadow.scale.setScalar(RSCALE * (onBike ? 1.5 : rolling ? 0.8 : 1) * Math.max(0.45, 1 - (above * SCALE) / (RSCALE * 3)));
         if (onBike) {
           for (const w of wheels) w.rotation.x = state.run / (0.58 * RSCALE);
           rig.position.set(0, 0.34 + (air ? 0 : Math.abs(sw) * 0.03), 0);
@@ -628,7 +637,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
           if (!t.alive) continue;
           const w = runToLngLat(t.s, LANES[t.lane]);
           const p = local(w.lon, w.lat);
-          t.mesh.position.set(p.x, t.kind === "token" || t.kind === "shield" ? 1.2 * SCALE : (t.h / 2) * SCALE, p.z);
+          t.mesh.position.set(p.x, t.kind === "token" || t.kind === "shield" ? (1.2 + (t.lift ?? 0)) * SCALE : (t.h / 2) * SCALE, p.z);
           t.mesh.rotation.y = t.kind === "token" ? state.run * 0.15 : -Math.atan2(w.e, w.n);
         }
         for (const sg of signs) {
@@ -908,12 +917,12 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       // jump; pressed a moment before landing, it still fires the instant you touch down
       jump: () => {
         if (!started || state.over || performance.now() < goAt) return;
-        if (state.y <= 0.001) doJump(); else state.jumpBuf = 0.15;
+        if (state.y <= state.floor + 0.001) doJump(); else state.jumpBuf = 0.15;
       },
       // down: slam out of a jump (and roll as you land), or roll under a LOW BRIDGE
       roll: () => {
         if (!started || state.over || performance.now() < goAt) return;
-        if (state.y > 0.001) { state.vy = Math.min(state.vy, -24); state.slam = state.bike <= 0; }
+        if (state.y > state.floor + 0.001) { state.vy = Math.min(state.vy, -24); state.slam = state.bike <= 0; }
         else if (state.bike <= 0 && state.roll <= 0) state.roll = ROLL_T;
       },
       // 🚲 blue bike: 8 s, 30% faster, one crash just knocks you off the bike; 20 s cooldown
@@ -933,7 +942,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       e.preventDefault();
     };
     // swipes fire the moment the finger has moved far enough (not on release), one action per swipe;
-    // a tap does nothing and a quick double-tap hops on the bike, like the hoverboard in Subway Surfers
+    // a tap jumps and a quick double-tap hops on the bike (like the hoverboard in Subway Surfers)
     let touch: { x: number; y: number; used: boolean } | null = null;
     let lastTap = 0;
     const ts = (e: TouchEvent) => { touch = { x: e.touches[0].clientX, y: e.touches[0].clientY, used: false }; };
@@ -950,16 +959,18 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       if (!touch) return;
       if (!touch.used) {
         const now = performance.now();
-        if (now - lastTap < 320) { controls.current.bike(); lastTap = 0; } else lastTap = now;
+        if (now - lastTap < 320) { controls.current.bike(); lastTap = 0; } else { lastTap = now; controls.current.jump(); }
       }
       touch = null;
     };
     const dbl = (e: MouseEvent) => { e.preventDefault(); controls.current.bike(); };
+    const pd = (e: PointerEvent) => { if (e.pointerType === "mouse" && e.button === 0) controls.current.jump(); };
     window.addEventListener("keydown", onKey);
     el.current.addEventListener("touchstart", ts, { passive: true });
     el.current.addEventListener("touchmove", tm, { passive: true });
     el.current.addEventListener("touchend", te);
     el.current.addEventListener("dblclick", dbl);
+    el.current.addEventListener("pointerdown", pd);
     const host = el.current;
 
     const drawMini = (me: { lon: number; lat: number }, bearing: number) => {
@@ -1006,8 +1017,9 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       g.fillStyle = "#fff"; g.font = "800 12px Inter, system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("N", ex, ey + 0.5);
     };
     let raf = 0, last = performance.now(), hudT = 0, streetT = 0, mapT = 0, street = "";
-    const end = () => {
+    const end = (why = "") => {
       state.over = true;
+      setCrash(why);
       setPhase("over");
       api.post("/arcade/score", { routeId: line, distance: Math.round(state.run), tokens: state.tokens, stations: state.stations, durationMs: Math.max(1000, Math.round(performance.now() - state.t0)) })
         .then(setResult).catch(() => setResult({ score: Math.round(state.run) + state.tokens * 10 + state.stations * 50 }));
@@ -1023,14 +1035,20 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
         state.bike = Math.max(0, state.bike - dt);
         state.bikeCd = Math.max(0, state.bikeCd - dt);
         // Subway Surfers-style arc: snappy rise, a short hang at the top, a fast fall (~0.8 s in all)
-        const wasAir = state.y > 0;
+        // what's under your feet: the street, or the roof of a T car or bus you're running along
+        state.floor = 0;
+        for (const t of things) {
+          if (!t.alive || (t.kind !== "train" && t.kind !== "bus") || t.lane !== state.lane) continue;
+          if (Math.abs(t.s - state.run) <= t.len / 2 + 0.4 && state.y >= t.h - 0.6) state.floor = Math.max(state.floor, t.h);
+        }
+        const wasAir = state.y > state.floor;
         state.vy -= (state.vy > 2.5 ? 30 : state.vy > -2.5 ? 16 : 50) * dt;
-        state.y = Math.max(0, state.y + state.vy * dt);
-        if (state.y === 0) {
+        state.y = Math.max(state.floor, state.y + state.vy * dt);
+        if (state.y === state.floor) {
           state.vy = Math.max(0, state.vy);
           if (wasAir) {
             state.landT = LAND_T;
-            dustT = DUST_T; dust.position.set(0, 0.1, 0); dust.visible = true;
+            dustT = DUST_T; dust.position.set(0, state.floor * SCALE + 0.1, 0); dust.visible = true;
             if (state.slam) { state.slam = false; if (state.bike <= 0) state.roll = ROLL_T; }
           }
           if (state.jumpBuf > 0) doJump();
@@ -1052,15 +1070,30 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
           if (t.lane !== state.lane || Math.abs(state.x - LANES[t.lane]) > 1.6) continue;
           const dz = Math.abs(t.s - state.run);
           if ((t.kind === "token" || t.kind === "shield") && dz < 1.4) {
+            if (t.lift && state.y < t.lift - 1) continue; // roof coins are only for runners up on the roof
             t.alive = false; scene.remove(t.mesh);
             if (t.kind === "token") state.tokens++;
             else { state.shield = 6; setFlash("☕ Coffee shield: 6 s"); setTimeout(() => setFlash(null), 1200); }
           } else if (t.kind !== "token" && t.kind !== "shield" && dz < t.len / 2 + 0.6) {
-            if (t.kind === "gate") { if (state.roll > 0) continue; } // rolled under the low bridge
-            else if (t.kind !== "bus" && t.kind !== "train" && state.y > t.h * 0.9) continue; // jumped it
+            if (t.kind === "train" || t.kind === "bus") {
+              if (state.y >= t.h - 0.6) continue; // running on (or over) its roof
+              // jumped at it: vault up onto the roof, Subway Surfers-style (forgiving: just pressing jump is enough)
+              if (state.y - state.floor > 0.3 || state.vy > 4) {
+                state.y = t.h; state.floor = t.h; state.vy = Math.max(state.vy, 3);
+                if (!roofHinted) { roofHinted = true; setFlash(t.kind === "train" ? "🚋 On top of the T!" : "🚌 On top of the bus!"); setTimeout(() => setFlash(null), 1100); }
+                continue;
+              }
+            } else if (t.kind === "gate") { if (state.roll > 0 || state.y > t.h) continue; } // rolled under (or passed above) the low bridge
+            else if (state.y > t.h * 0.9) continue; // jumped the barrier or cone
             if (state.shield > 0) { t.alive = false; scene.remove(t.mesh); state.shield = 0; setFlash("Shield used!"); setTimeout(() => setFlash(null), 900); }
             else if (state.bike > 0) { t.alive = false; scene.remove(t.mesh); state.bike = 0; state.vy = 7; setFlash("💥 Off the bike! Keep running"); setTimeout(() => setFlash(null), 1100); }
-            else end();
+            else end(
+              t.kind === "train" ? (t.v ? "💥 Hit an oncoming T. Jump to land on its roof, or switch lanes." : "💥 Ran into a parked T. Jump (↑) to climb onto it.")
+              : t.kind === "bus" ? "💥 Hit a shuttle bus. Jump onto it or switch lanes."
+              : t.kind === "gate" ? "💥 Storrowed! Roll (↓) under LOW BRIDGE signs; you can't jump them."
+              : t.kind === "barrier" ? "💥 Hit a DELAY barrier. Jump it (↑)."
+              : "💥 Hit a cone. Jump it (↑).",
+            );
           }
         }
         // drop finished pieces so the per-frame loops stay short on long runs
@@ -1114,6 +1147,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       host.removeEventListener("touchend", te);
       host.removeEventListener("touchmove", tm);
       host.removeEventListener("dblclick", dbl);
+      host.removeEventListener("pointerdown", pd);
       disposed = true;
       window.removeEventListener("resize", onResize);
       tiles?.dispose();
@@ -1128,6 +1162,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
   const start = () => {
     autoStart.current = true;
     setResult(null);
+    setCrash("");
     setPhase("playing");
     setRunKey((k) => k + 1);
   };
@@ -1163,10 +1198,10 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       {phase === "playing" && look !== "color" && <canvas ref={mini} className="sr-mini" width={200} height={200} aria-label="Minimap" />}
       {phase === "playing" && (
         <div className="runner-pad">
-          <button onClick={() => controls.current.left()} aria-label="Left">◀</button>
-          <button onClick={() => controls.current.jump()} aria-label="Jump">▲</button>
-          <button onClick={() => controls.current.roll()} aria-label="Roll">▼</button>
-          <button onClick={() => controls.current.right()} aria-label="Right">▶</button>
+          <button onPointerDown={(e) => { e.preventDefault(); controls.current.left(); }} onClick={(e) => { if (e.detail === 0) controls.current.left(); }} aria-label="Left">◀</button>
+          <button onPointerDown={(e) => { e.preventDefault(); controls.current.jump(); }} onClick={(e) => { if (e.detail === 0) controls.current.jump(); }} aria-label="Jump">▲</button>
+          <button onPointerDown={(e) => { e.preventDefault(); controls.current.roll(); }} onClick={(e) => { if (e.detail === 0) controls.current.roll(); }} aria-label="Roll">▼</button>
+          <button onPointerDown={(e) => { e.preventDefault(); controls.current.right(); }} onClick={(e) => { if (e.detail === 0) controls.current.right(); }} aria-label="Right">▶</button>
           <button className={`bike-btn${hud.bike > 0 ? " on" : hud.bikeCd > 0 ? " cool" : ""}`} onClick={() => controls.current.bike()} aria-label="Blue bike">
             🚲{hud.bikeCd > 0 && hud.bike <= 0 && <small>{hud.bikeCd}</small>}
           </button>
@@ -1179,7 +1214,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
               <div className="logo" style={{ fontSize: 28 }}>Street <i>Runner</i></div>
               <p className="small muted" style={{ margin: 0 }}>
                 Run your T line's real route through the real streets of Boston: real buildings, real street names, real shops. Dodge shuttle buses and DELAY barriers, grab tokens, +50 for every station you pass.
-                Swipe or use the arrow keys: ← → switch lanes, ↑ jump the DELAY barriers, ↓ roll under the LOW BRIDGE signs (↓ in the air slams you down). Double-click (double-tap, or B) to hop on a 🚲 blue bike: 30% faster, and a crash only knocks you off the bike.
+                Tap, swipe or use the arrow keys: ← → switch lanes, ↑ jump DELAY barriers and jump onto parked T cars and buses to run along their roofs (roof coins!), ↓ roll under LOW BRIDGE signs (↓ in the air slams you down). Double-click (double-tap, or B) to hop on a 🚲 blue bike: 30% faster, and a crash only knocks you off the bike.
               </p>
             </>
           ) : (
@@ -1189,6 +1224,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
                 {result?.newBest && <span className="tag ok">🏆 New personal best!</span>}{" "}
                 {result?.rank && <span className="tag">#{result.rank} on the {route?.short} board</span>}
               </div>
+              {crash && <div className="center sr-why">{crash}</div>}
               <div className="center small muted">{hud.distance} m through Boston · {hud.tokens} tokens</div>
             </>
           )}
