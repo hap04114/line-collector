@@ -3,7 +3,7 @@ import { api, fmtDist, money, qs } from "../api";
 import { useI18n } from "../i18n";
 import { spotEmoji, useStore } from "../store";
 import { Sheet, Stepper } from "../components/Sheet";
-import { FoodFilters, SpotBadges, tfieldQuery, useTFieldPrefs } from "../components/TFieldBits";
+import { FoodFilters, SpotBadges, tfieldQuery, useTFieldPrefs, WhenPicker } from "../components/TFieldBits";
 
 /** Find food or a study spot near you, across every nearby station, sorted by walking distance. */
 export function FindView({ initialKind = "food" }: { initialKind?: "food" | "study" }) {
@@ -30,7 +30,7 @@ export function FindView({ initialKind = "food" }: { initialKind?: "food" | "stu
         .finally(() => setBusy(false));
     }, 250);
     return () => clearTimeout(h);
-  }, [kind, text, budget, craving, openNow, s.pos?.lat, s.pos?.lon, tfq.avoid, tfq.venue, tfq.showClosed]);
+  }, [kind, text, budget, craving, openNow, s.pos?.lat, s.pos?.lon, tfq.avoid, tfq.venue, tfq.showClosed, tfq.arriveIn]);
 
   const open = (sp: any) => {
     s.setPanel(null);
@@ -55,6 +55,7 @@ export function FindView({ initialKind = "food" }: { initialKind?: "food" | "stu
           <div className="chips">
             {cravings.map((c) => <button key={c.id} className={`chip ${craving === c.id ? "on" : ""}`} onClick={() => setCraving(craving === c.id ? "" : c.id)}>{c.label}</button>)}
           </div>
+          <WhenPicker />
           <FoodFilters />
         </>
       )}

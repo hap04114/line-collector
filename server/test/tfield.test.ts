@@ -124,3 +124,45 @@ describe("Google Places enrichment", () => {
     expect(shapePlace(spot, { displayName: { text: "Pavement Coffeehouse" }, location: { latitude: 42.36, longitude: -71.06 } }).matched).toBe(false);
   });
 });
+
+import { reach } from "../src/services/reach.js";
+
+describe("transit wave (reach by T)", () => {
+  const neu = { lat: 42.3398, lon: -71.0892 };
+  it("finds more stations with more time, nearest first", () => {
+    const r10 = reach(neu.lat, neu.lon, 10), r20 = reach(neu.lat, neu.lon, 20);
+    expect(r10[0].name).toBe("Northeastern University");
+    expect(r20.length).toBeGreaterThan(r10.length);
+    expect(r20.every((s, i) => i === 0 || s.minutes >= r20[i - 1].minutes)).toBe(true);
+    expect(r20.every((s) => s.minutes <= 20)).toBe(true);
+  });
+  it("rides the line instead of walking far, and transfers cost time", () => {
+    const r = reach(neu.lat, neu.lon, 30);
+    const park = r.find((s) => s.name === "Park Street")!;
+    expect(park.walkOnly).toBe(false);
+    expect(park.minutes).toBeGreaterThanOrEqual(10);
+    expect(park.minutes).toBeLessThanOrEqual(20);
+    const harvard = r.find((s) => s.name === "Harvard");
+    if (harvard) expect(harvard.minutes).toBeGreaterThan(park.minutes); // needs a transfer at Park Street
+  });
+  it("slower walking reaches fewer stations", () => {
+    expect(reach(neu.lat, neu.lon, 15, 0.7).length).toBeLessThanOrEqual(reach(neu.lat, neu.lon, 15, 1.3).length);
+  });
+});
+
+import { shapeRental, shapeStay } from "../src/routes/housing.js";
+
+describe("Live → Find a place", () => {
+  const from = { lat: 42.3398, lon: -71.0892 };
+  it("maps a RentCast listing with distance and nearest T", () => {
+    const r = shapeRental({ id: "x1", formattedAddress: "10 Hemenway St, Boston, MA 02115", latitude: 42.3455, longitude: -71.0889, price: 1450, bedrooms: 0, bathrooms: 1, daysOnMarket: 4 }, from)!;
+    expect(r).toMatchObject({ priceCents: 145000, bedrooms: 0, address: "10 Hemenway St, Boston, MA 02115" });
+    expect(r.station?.name).toBeTruthy();
+    expect(shapeRental({ price: 1000 }, from)).toBeNull();
+  });
+  it("maps a Google Places hostel with its Maps link", () => {
+    const h = shapeStay({ id: "p1", displayName: { text: "HI Boston" }, location: { latitude: 42.3519, longitude: -71.0617 }, rating: 4.4, userRatingCount: 3000, googleMapsUri: "https://maps.google.com/?cid=1" }, from)!;
+    expect(h).toMatchObject({ name: "HI Boston", rating: 4.4, mapsUrl: "https://maps.google.com/?cid=1" });
+    expect(h.distanceM).toBeGreaterThan(2000);
+  });
+});

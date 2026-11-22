@@ -122,7 +122,7 @@ const tfieldQ = (q: any) => ({
   avoidAllergens: String(q.avoid ?? "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 12),
   venueTypes: String(q.venue ?? "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 12),
   showClosed: q.showClosed === "1" || q.showClosed === "true",
-  ...(Number.isFinite(Number(q.arriveIn)) && q.arriveIn ? { arriveInMin: Math.min(180, Math.max(0, Number(q.arriveIn))) } : {}),
+  ...(Number.isFinite(Number(q.arriveIn)) && q.arriveIn ? { arriveInMin: Math.min(1440, Math.max(0, Number(q.arriveIn))) } : {}),
 });
 
 gameRoutes.get("/spots", async (req, res) => {

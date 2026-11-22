@@ -20,6 +20,7 @@ import { arcadeRoutes } from "./routes/arcade.js";
 import { extraRoutes } from "./routes/extra.js";
 import { freeBostonRoutes } from "./routes/freeBoston.js";
 import { tfieldRoutes } from "./routes/tfield.js";
+import { housingRoutes } from "./routes/housing.js";
 import { scheduleBackups } from "./lib/storage.js";
 import { applyTField } from "./services/tfield.js";
 
@@ -49,7 +50,7 @@ async function main() {
 
   const api = express.Router();
   api.use(loadSession);
-  api.use(authRoutes, gameRoutes, communityRoutes, liveRoutes, rideRoutes, aiRoutes, arcadeRoutes, extraRoutes, freeBostonRoutes, tfieldRoutes);
+  api.use(authRoutes, gameRoutes, communityRoutes, liveRoutes, rideRoutes, aiRoutes, arcadeRoutes, extraRoutes, freeBostonRoutes, tfieldRoutes, housingRoutes);
   app.use("/api", api);
   app.use("/uploads", express.static(UPLOAD_DIR, { maxAge: "7d", fallthrough: false }));
 
