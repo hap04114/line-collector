@@ -187,6 +187,9 @@ export function MapView() {
 
   // ---- theme switch -----------------------------------------------------------------
   const firstTheme = useRef(true);
+  // set when Photoreal falls back on its own: show Realistic now, but don't save it as the student's choice,
+  // so the next visit tries Photoreal again instead of staying on Realistic for good
+  const autoFallback = useRef(false);
   useEffect(() => {
     if (firstTheme.current) {
       firstTheme.current = false;
@@ -194,6 +197,10 @@ export function MapView() {
     }
     // a full reload (no diff): Realistic and Illustrated share a base style but paint it differently
     mapRef.current?.setStyle(STYLES[theme], { diff: false });
+    if (autoFallback.current) {
+      autoFallback.current = false;
+      return;
+    }
     try {
       localStorage.setItem("lc-theme-v2", theme);
     } catch {
@@ -211,6 +218,7 @@ export function MapView() {
     const photoOn = theme === "photo" && !!sRef.current.config?.googleTilesKey;
     if (photoOn) {
       applyPhotoreal(map, sRef.current.config!.googleTilesKey!, setGCredit, () => {
+        autoFallback.current = true;
         setTheme("real");
         sRef.current.toast("Photoreal map isn't available right now, showing Realistic");
       });
