@@ -5,6 +5,7 @@
  * (OSM prices + T-Field diet tags), so it shares data with Explore without touching its code.
  */
 import { Router } from "express";
+import opening_hours from "opening_hours";
 import { z } from "zod";
 import { getDb } from "../db/index.js";
 import { BROKE_HACKS, FREE_CATS, FREE_PLACES, type FreePlace } from "../data/freeBoston.js";
@@ -280,4 +281,75 @@ freeBostonRoutes.get("/boston-events/search", async (req, res) => {
   if (webCache.size > 200) webCache.delete(webCache.keys().next().value!);
   webCache.set(key, { at: Date.now(), value });
   res.json({ ...value, cached: false });
+});
+
+// ---- explore nearby (Stop Planner): tourist spots with today's hours -------------------------------
+// coordinates must be strings, or opening_hours silently falls back to 6 AM-6 PM for sunrise/sunset
+const ohCache = new Map<string, any>();
+function parseHours(h: string) {
+  if (!ohCache.has(h)) {
+    try {
+      ohCache.set(h, new opening_hours(h, { lat: "42.36", lon: "-71.06", address: { country_code: "us", state: "Massachusetts" } } as any, { mode: 0, tag_key: "opening_hours" } as any));
+    } catch { ohCache.set(h, null); }
+  }
+  return ohCache.get(h);
+}
+const clock12 = (d: Date) => d.toLocaleTimeString("en-US", { hour: "numeric", minute: d.getMinutes() ? "2-digit" : undefined, timeZone: "America/New_York" });
+
+/** Today's hours, open now, and the next change, in Boston time (the server runs with TZ=America/New_York). */
+export function placeHours(hours: string | null, note: string | undefined, now = new Date()) {
+  const base = { openNow: null as boolean | null, allDay: false, today: null as string | null, next: null as string | null, note: note ?? null };
+  if (!hours) return base;
+  if (hours === "24/7") return { ...base, openNow: true, allDay: true, today: "Open 24 hours" };
+  const oh = parseHours(hours);
+  if (!oh) return base;
+  const start = new Date(now); start.setHours(0, 0, 0, 0);
+  const end = new Date(start); end.setDate(end.getDate() + 1);
+  const spans: [Date, Date][] = oh.getOpenIntervals(start, end);
+  const today = spans.length
+    ? spans.map(([a, b]) => `${clock12(a)}–${b.getTime() >= end.getTime() - 60_000 ? "midnight" : clock12(b)}`).join(", ")
+    : "Closed today";
+  const openNow: boolean = oh.getState(now);
+  const nx: Date | undefined = oh.getNextChange(now);
+  let next: string | null = null;
+  if (nx) {
+    const days = Math.round((new Date(nx).setHours(0, 0, 0, 0) - start.getTime()) / 86_400_000);
+    const when = days === 0 ? "" : days === 1 ? " tomorrow" : days < 7 ? ` ${nx.toLocaleDateString("en-US", { weekday: "short", timeZone: "America/New_York" })}` : ` ${nx.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })}`;
+    next = `${openNow ? "Closes" : "Opens"} ${clock12(nx)}${when}`;
+  }
+  return { ...base, openNow, today, next };
+}
+
+const XQ = z.object({
+  cats: z.string().max(100).optional(),
+  lat: z.coerce.number().optional(),
+  lon: z.coerce.number().optional(),
+  limit: z.coerce.number().int().min(1).max(12).default(6),
+});
+
+freeBostonRoutes.get("/explore-nearby", (req, res) => {
+  const q = XQ.parse(req.query);
+  const known = new Set(FREE_CATS.map((c) => c.id));
+  const cats = (q.cats ?? "").split(",").filter((c) => known.has(c as any));
+  const from = q.lat != null && q.lon != null ? { lat: q.lat, lon: q.lon } : { lat: 42.3564, lon: -71.0624 }; // Park Street
+  const now = new Date();
+  const list = FREE_PLACES
+    .filter((p) => !cats.length || cats.includes(p.cat))
+    .map((p) => {
+      const st = stationById.get(p.stationId);
+      const d = haversineM(from.lat, from.lon, p.lat, p.lon);
+      return {
+        id: p.id, name: p.name, cat: p.cat, blurb: p.blurb, costCents: p.costCents, costNote: p.costNote ?? null,
+        lat: p.lat, lon: p.lon, stationId: p.stationId, station: st?.name ?? null,
+        lines: (st?.routes ?? []).map((r) => routeById.get(r)).filter(Boolean).map((r) => ({ id: r!.id, short: r!.short, color: r!.color })),
+        distanceM: Math.round(d), walkMin: walkMinutes(d),
+        hours: placeHours(p.hours, p.hoursNote, now),
+      };
+    })
+    // nearest first, but a spot that's closed right now counts as 25 walking minutes farther
+    .sort((a, b) => {
+      const score = (x: typeof a) => x.walkMin + (x.hours.openNow === false ? 25 : x.hours.openNow === null ? 3 : 0);
+      return score(a) - score(b);
+    });
+  res.json({ cats: FREE_CATS, total: list.length, places: list.slice(0, q.limit) });
 });

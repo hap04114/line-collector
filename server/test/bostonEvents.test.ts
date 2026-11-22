@@ -185,3 +185,33 @@ describe("Boston area filter", () => {
     expect(matchesQuery(ev, "free food")).toBe(true);
   });
 });
+
+import { placeHours } from "../src/routes/freeBoston.js";
+
+describe("tourist spot hours (Boston time)", () => {
+  const MFA = "Mo,We,Sa,Su 10:00-17:00; Th,Fr 10:00-22:00; Tu off";
+  it("closed on a closed day, with when it reopens", () => {
+    const h = placeHours(MFA, "Closed Tuesdays", new Date("2026-11-24T12:00:00-05:00"));
+    expect(h).toMatchObject({ openNow: false, today: "Closed today", next: "Opens 10 AM tomorrow", note: "Closed Tuesdays" });
+  });
+  it("late night opening", () => {
+    const h = placeHours(MFA, undefined, new Date("2026-11-27T20:00:00-05:00"));
+    expect(h).toMatchObject({ openNow: true, today: "10 AM–10 PM", next: "Closes 10 PM" });
+  });
+  it("city park after closing", () => {
+    const h = placeHours("06:00-23:30", undefined, new Date("2026-11-22T23:45:00-05:00"));
+    expect(h).toMatchObject({ openNow: false, today: "6 AM–11:30 PM", next: "Opens 6 AM tomorrow" });
+  });
+  it("seasonal market in the off-season", () => {
+    const h = placeHours("May-Oct Su 10:00-16:00", undefined, new Date("2026-11-22T12:00:00-05:00"));
+    expect(h.openNow).toBe(false);
+    expect(h.next).toBe("Opens 10 AM May 2");
+  });
+  it("always open, sunrise to sunset, and unknown", () => {
+    expect(placeHours("24/7", undefined)).toMatchObject({ openNow: true, allDay: true, today: "Open 24 hours" });
+    const sun = placeHours("sunrise-sunset", undefined, new Date("2026-11-22T12:00:00-05:00"));
+    expect(sun.openNow).toBe(true);
+    expect(sun.today).toMatch(/^6:\d\d AM–4:\d\d PM$/);
+    expect(placeHours(null, "Open every day")).toMatchObject({ openNow: null, today: null, note: "Open every day" });
+  });
+});
