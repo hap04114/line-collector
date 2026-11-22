@@ -60,18 +60,18 @@ export async function seedStatic(db: Db) {
           s.id, s.osmId, s.name, s.kind, s.amenity, s.stationId, s.lat, s.lon, s.distanceM, s.cuisines, s.region,
           ov?.priceCents ?? s.priceCents, ov ? "checked" : s.priceSource, ov?.cheapestItem ?? null, s.hours, s.vibes, s.vibeSource,
           s.localOwned, s.brand, s.wifi, s.study, neighborhoodAt(s.lat, s.lon, st?.municipality), s.address, s.website,
-          s.kind === "hangout" ? 250 : 150,
+          s.kind === "hangout" ? 250 : 150, s.diet ?? [],
         );
-        const o = j * 25;
-        return `(${Array.from({ length: 25 }, (_, k) => `$${o + k + 1}`).join(",")})`;
+        const o = j * 26;
+        return `(${Array.from({ length: 26 }, (_, k) => `$${o + k + 1}`).join(",")})`;
       });
       await db.query(
         `INSERT INTO spots (id, osm_id, name, kind, amenity, station_id, lat, lon, distance_m, cuisines, region, price_cents, price_source,
-           cheapest_item, hours, vibes, vibe_source, local_owned, brand, wifi, study, neighborhood_id, address, website, checkin_radius_m)
+           cheapest_item, hours, vibes, vibe_source, local_owned, brand, wifi, study, neighborhood_id, address, website, checkin_radius_m, diet)
          VALUES ${rows.join(",")}
          ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, amenity=EXCLUDED.amenity, price_cents=EXCLUDED.price_cents,
            price_source=EXCLUDED.price_source, cheapest_item=EXCLUDED.cheapest_item, hours=EXCLUDED.hours, vibes=EXCLUDED.vibes,
-           vibe_source=EXCLUDED.vibe_source, neighborhood_id=EXCLUDED.neighborhood_id`,
+           vibe_source=EXCLUDED.vibe_source, neighborhood_id=EXCLUDED.neighborhood_id, diet=EXCLUDED.diet`,
         values,
       );
     }

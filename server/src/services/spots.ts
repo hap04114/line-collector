@@ -4,7 +4,7 @@ import { isOpenAt, isOpenLate, nextChangeLabel } from "../lib/hours.js";
 import { haversineM, walkMinutes } from "../lib/geo.js";
 import { stationById, STATIONS } from "../lib/static.js";
 
-export const CRAVINGS: Record<string, { label: string; cuisines?: string[]; amenities?: string[]; regions?: string[] }> = {
+export const CRAVINGS: Record<string, { label: string; cuisines?: string[]; amenities?: string[]; regions?: string[]; diets?: string[] }> = {
   pizza: { label: "Pizza", cuisines: ["pizza"] },
   noodles: { label: "Noodles", cuisines: ["ramen", "noodle", "pho", "vietnamese", "chinese", "dumpling", "thai"] },
   spicy: { label: "Spicy", cuisines: ["indian", "thai", "sichuan", "korean", "mexican", "ethiopian", "nepalese", "pakistani", "jamaican", "caribbean", "szechuan", "hot_pot"] },
@@ -15,6 +15,11 @@ export const CRAVINGS: Record<string, { label: string; cuisines?: string[]; amen
   asian: { label: "Asian", regions: ["east-asian", "southeast-asian", "south-asian"] },
   latin: { label: "Latin", regions: ["latin-american", "caribbean"] },
   middle_eastern: { label: "Middle Eastern", regions: ["middle-eastern"] },
+  halal: { label: "Halal", diets: ["halal"] },
+  vegetarian: { label: "Vegetarian", diets: ["vegetarian", "vegan"] },
+  vegan: { label: "Vegan", diets: ["vegan"] },
+  gluten_free: { label: "Gluten-free", diets: ["gluten_free"] },
+  kosher: { label: "Kosher", diets: ["kosher"] },
 };
 
 export const VIBES = ["cozy", "photogenic", "good for groups", "quiet", "late-night", "quick bite"];
@@ -35,6 +40,7 @@ export interface SpotQuery {
 function matchesCraving(s: any, craving: string, homeRegions: string[]): boolean {
   if (craving === "home") return !!s.region && homeRegions.includes(s.region);
   const c = CRAVINGS[craving];
+  if (c?.diets) return (s.diet ?? []).some((d: string) => c.diets!.includes(d.replace("?", "")));
   if (c) {
     return (
       (c.cuisines?.some((x) => s.cuisines.includes(x)) ?? false) ||
@@ -72,6 +78,7 @@ export function decorate(s: any, now = new Date()) {
     brand: s.brand,
     wifi: s.wifi,
     study: s.study,
+    diet: s.diet ?? [],
     neighborhoodId: s.neighborhood_id,
     address: s.address,
     website: s.website,

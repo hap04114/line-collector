@@ -92,7 +92,12 @@ function SpotRow({ spot, selected, onClick }: { spot: any; selected: boolean; on
           {spot.nextChange && ` · ${spot.nextChange}`}
           {spot.localOwned && spot.kind === "food" && " · local"}
         </div>
-        {spot.vibes?.length > 0 && <div className="row wrap" style={{ gap: 4, marginTop: 4 }}>{spot.vibes.map((v: string) => <span key={v} className="tag">{v}</span>)}</div>}
+        {(spot.vibes?.length > 0 || spot.diet?.length > 0) && (
+          <div className="row wrap" style={{ gap: 4, marginTop: 4 }}>
+            {spot.diet?.map((d: string) => <span key={d} className="tag ok" title={d.endsWith("?") ? "inferred from the menu type" : "tagged on OpenStreetMap"}>🥗 {d.replace("?", "").replace("_", "-")}{d.endsWith("?") ? "?" : ""}</span>)}
+            {spot.vibes?.map((v: string) => <span key={v} className="tag">{v}</span>)}
+          </div>
+        )}
       </div>
       <div className="price">
         {spot.kind === "food" ? money(spot.priceCents) : "free"}

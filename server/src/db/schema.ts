@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS spots (
   brand text,
   wifi boolean NOT NULL DEFAULT false,
   study boolean NOT NULL DEFAULT false,
+  diet text[] NOT NULL DEFAULT '{}',
   neighborhood_id text,
   address text,
   website text,
@@ -115,6 +116,7 @@ CREATE TABLE IF NOT EXISTS spots (
   checkin_radius_m int NOT NULL DEFAULT 150
 );
 CREATE INDEX IF NOT EXISTS spots_station_idx ON spots (station_id);
+ALTER TABLE spots ADD COLUMN IF NOT EXISTS diet text[] NOT NULL DEFAULT '{}';
 
 CREATE TABLE IF NOT EXISTS checkins (
   id text NOT NULL,

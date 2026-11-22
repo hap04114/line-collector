@@ -68,6 +68,7 @@ export function FindView({ initialKind = "food" }: { initialKind?: "food" | "stu
               <div className="row wrap" style={{ gap: 6 }}>
                 <b>{sp.name}</b>
                 {sp.partner && <span className="tag gold">⭐ {t("localPartner")}</span>}
+                {sp.diet?.map((d: string) => <span key={d} className="tag ok">🥗 {d.replace("?", "").replace("_", "-")}</span>)}
               </div>
               <div className="small muted">
                 {fmtDist(sp.distanceM)} · {sp.walkMin} {t("walk")} · near {sp.station}
