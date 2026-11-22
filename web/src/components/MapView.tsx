@@ -74,6 +74,9 @@ export function MapView() {
       pitch: 55,
       bearing: -18,
       maxPitch: 72,
+      // stay in Greater Boston: zooming out stops where the T and the city end
+      maxBounds: [[-71.42, 42.13], [-70.82, 42.53]],
+      minZoom: 10.6,
       attributionControl: { compact: true },
     });
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
@@ -126,6 +129,12 @@ export function MapView() {
     const map = mapRef.current;
     if (!map || !loaded || !s.statics || map.getSource("lc-lines")) return;
     const firstSymbol = map.getStyle().layers.find((l) => l.type === "symbol")?.id;
+    // real 3D buildings from neighborhood zoom, shaded by height (illustrated style)
+    if (map.getLayer("building-3d")) {
+      map.setLayerZoomRange("building-3d", 13, 24);
+      map.setPaintProperty("building-3d", "fill-extrusion-color", ["interpolate", ["linear"], ["coalesce", ["get", "render_height"], 8], 0, "#ece6dc", 20, "#ddd6ca", 60, "#c9cfd9", 150, "#aab6c8"]);
+      map.setPaintProperty("building-3d", "fill-extrusion-opacity", 0.92);
+    }
 
     if (!map.getLayer("building-3d") && !map.getLayer("lc-buildings")) {
       map.addLayer(

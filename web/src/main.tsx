@@ -4,6 +4,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import "./styles.css";
 import "./landing.css";
 import "./map-overlays.css";
+import "./doodles.css";
 import { App } from "./App";
 import { OwnerPage } from "./views/OwnerPage";
 import { I18nProvider } from "./i18n";

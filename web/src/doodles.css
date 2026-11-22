@@ -1,0 +1,68 @@
+/* ---- Boston doodles, BostonHacks palette, live "Boston right now" ---- */
+.lx { background:
+  radial-gradient(circle at 1px 1px, #dbe6f7 1px, transparent 0) 0 0 / 26px 26px,
+  #fff; }
+.lx-hl { position: relative; white-space: nowrap; z-index: 0; }
+.lx-hl::after { content: ""; position: absolute; left: -4px; right: -4px; bottom: 6%; height: 38%; background: #F7DD04; border-radius: 6px 14px 8px 12px; z-index: -1; transform: rotate(-1.5deg); transform-origin: left; animation: marker 1s .3s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes marker { from { transform: scaleX(0) rotate(-1.5deg); } to { transform: scaleX(1) rotate(-1.5deg); } }
+.lx-badge span { background: #206DDF; }
+.lx-btn.dark { background: #206DDF; box-shadow: 0 6px 0 #0b1220, 0 10px 24px rgba(32,109,223,.3); border: 2px solid #0b1220; }
+.lx-btn.dark:hover { box-shadow: 0 8px 0 #0b1220, 0 16px 30px rgba(32,109,223,.35); }
+.lx-btn.dark:active { transform: translateY(4px); box-shadow: 0 2px 0 #0b1220; }
+.lx-btn.light { border: 2px solid #0b1220; box-shadow: 0 6px 0 #0b1220; background: #F7DD04; }
+.lx-btn.light:hover { box-shadow: 0 8px 0 #0b1220; }
+.lx-num { background: #206DDF; border: 2px solid #0b1220; box-shadow: 3px 3px 0 #0b1220; }
+.lx-step, .ft { border: 2px solid #0b1220; box-shadow: 5px 5px 0 #0b1220; }
+.lx-step:hover, .ft:hover { box-shadow: 8px 8px 0 #0b1220; transform: translate(-2px, -3px); }
+.lx-stats div { background: #F7DD04; border: 2px solid #0b1220; box-shadow: 5px 5px 0 #0b1220; }
+.lx-stats div:nth-child(2) { background: #cfe2ff; }
+.lx-stats div:nth-child(3) { background: #d7f1df; }
+.lx-stats div:nth-child(4) { background: #ffd9d3; }
+.lx-stats span { color: #24324a; font-weight: 600; }
+.lx-eyebrow { color: #206DDF; }
+.lx-start { background: #206DDF; border: 2px solid #0b1220; box-shadow: 8px 8px 0 #0b1220; }
+.lx-start::after { background: radial-gradient(circle, rgba(247,221,4,.45), transparent 70%); }
+.lx-start .lx-p { color: #e6efff; }
+.lx-form { border: 2px solid #0b1220; }
+.lb, .lx-safety { border: 2px solid #0b1220; box-shadow: 6px 6px 0 #0b1220; }
+
+/* doodles */
+.doodle { overflow: visible; }
+.dd { position: absolute; z-index: 1; pointer-events: none; opacity: .95; }
+.dd-inline { display: block; margin-bottom: 4px; }
+.float { animation: dfloat 5s ease-in-out infinite; }
+.float.slow { animation-duration: 7s; }
+.wiggle { animation: dwiggle 3.2s ease-in-out infinite; transform-origin: 50% 80%; }
+.spin { animation: dspin 12s linear infinite; }
+@keyframes dfloat { 0%, 100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-10px) rotate(2deg); } }
+@keyframes dwiggle { 0%, 100% { transform: rotate(-5deg); } 50% { transform: rotate(5deg); } }
+@keyframes dspin { to { transform: rotate(360deg); } }
+
+/* Boston right now */
+.lx-ticker { overflow: hidden; border: 2px solid #0b1220; border-radius: 14px; background: #0b1220; box-shadow: 5px 5px 0 #F7DD04; margin-bottom: 20px; }
+.lx-ticker-track { display: inline-flex; gap: 40px; white-space: nowrap; padding: 14px 0; animation: tick 45s linear infinite; }
+.lx-ticker-track span { color: #fff; font-weight: 600; font-size: 15px; }
+.lx-ticker-track span::after { content: "✦"; color: #F7DD04; margin-left: 40px; }
+.lx-ticker:hover .lx-ticker-track { animation-play-state: paused; }
+@keyframes tick { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.lx-now { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.lx-now-card { background: #fff; border: 2px solid #0b1220; border-radius: 22px; box-shadow: 5px 5px 0 #0b1220; padding: 20px; display: flex; flex-direction: column; gap: 6px; }
+.lx-now-card b { font-size: 22px; letter-spacing: -0.02em; }
+.lx-now-card span { color: #475467; line-height: 1.5; font-size: 15px; }
+.lx-now-card:nth-child(1) { background: #eef5ff; }
+.lx-now-card:nth-child(2) { background: #f0faf3; }
+.lx-now-card:nth-child(3) { background: #fffbe0; }
+.lx-quote .doodle { display: block; margin: 0 auto 8px; }
+.lx-start-copy .doodle { display: block; margin-bottom: 6px; }
+
+@media (max-width: 900px) {
+  .lx-now { grid-template-columns: 1fr; }
+  .dd { transform: scale(.75); opacity: .8; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .float, .wiggle, .spin, .lx-ticker-track, .lx-hl::after { animation: none !important; }
+}
+.lx-hero > svg.dd { position: absolute; }
+.lx-stats b span { font-size: inherit; color: inherit; font-weight: inherit; }
+.lx-stats b { font-size: 34px; color: #0b1220; }
+@media (max-width: 900px) { .lx-stats b { font-size: 28px; } .lx-hero > svg.dd { opacity: .55; } }
