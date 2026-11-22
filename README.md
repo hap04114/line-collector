@@ -51,10 +51,30 @@ Copy `.env.example` to `.env` to add keys. `npm test` runs the unit tests for sc
 
 ## Deploy on Vultr
 
-1. Create a small Ubuntu instance, install Docker, and clone the repo.
-2. Point the domain at the server's IP.
-3. In `.env`, set `DOMAIN`, `PUBLIC_URL=https://<domain>`, `DATABASE_URL` (Tiger Cloud) and `GEMINI_API_KEY`. Optionally add `MBTA_API_KEY`, `RESEND_API_KEY` and `SOLANA_SECRET_KEY`.
-4. Run `docker compose up -d --build`. Caddy fetches the certificate on first request.
+1. **Server:** Vultr Cloud Compute, Shared CPU, Ubuntu 24.04, 2 GB RAM, New York (NJ). SSH in, install Docker with `curl -fsSL https://get.docker.com | sh`, then `git clone` this repo and `cd` into it.
+2. **Keys:** copy the working `.env` from the demo laptop to the server privately, e.g. `scp .env root@<server-ip>:~/line-collector/.env`. Never commit it or paste it in a shared channel. On the server, set `DOMAIN` (docker-compose sets `PUBLIC_URL` from it).
+   - No domain yet? Use `<ip-with-dashes>.sslip.io` (e.g. `45-77-10-20.sslip.io`). It's free, needs no DNS, and Caddy still gets a real HTTPS certificate, which phone GPS needs.
+   - With a domain: add an A record `@` pointing at the server IP.
+3. **Google 3D tiles key:** in Google Cloud → Credentials → the browser key (`GOOGLE_MAPS_API_KEY`) → Websites, add `https://<domain>/*`. Without it, the Photoreal map and Street Runner fall back to the Realistic look on their own.
+4. **Run:** `docker compose up -d --build`. Then check `https://<domain>/api/health`; `https://<domain>/api/proof` shows each sponsor live.
+5. **After it's live:** stop the app on the demo laptop. Otherwise two MBTA pollers write duplicate train data into Tiger.
+6. **Updates:** `git pull && docker compose up -d --build`.
+
+| `.env` key | Needed? | What it does |
+|---|---|---|
+| `DATABASE_URL` | Required | Tiger Cloud (TimescaleDB) |
+| `GEMINI_API_KEY` | Required | Photo check, planner, scam scan, search |
+| `DEMO_MODE=true`, `DEV_SHOW_MAGIC_LINK=true` | Keep on for judging | Demo sign-in buttons, and the sign-in link on screen (Resend's test sender only emails the account owner) |
+| `GOOGLE_MAPS_API_KEY` | Recommended | Photoreal map and Street Runner (browser key, restricted by website) |
+| `GOOGLE_API_KEY` | Recommended | Directions (Routes API) and place lookups (Places API (New)); server key, no website restriction |
+| `MBTA_API_KEY` | Recommended | Live trains at 1,000 requests/min instead of 20 |
+| `SOLANA_SECRET_KEY` | Optional | On-chain receipts for reward redemptions (devnet wallet, funded) |
+| `RESEND_API_KEY` | Optional | Sign-in emails |
+| `VULTR_S3_ENDPOINT`, `VULTR_S3_BUCKET`, `VULTR_S3_ACCESS_KEY`, `VULTR_S3_SECRET_KEY` | Optional | Photos and nightly backups in Vultr Object Storage (otherwise local disk) |
+| `RENTCAST_API_KEY` | Optional | Rent data and listings; needs an active RentCast plan, so leave it empty otherwise |
+| `EVENTBRITE_TOKEN` | Optional | More events in $0 Boston |
+
+Google ratings, prices and hours are not in git (Google's terms). To show them on the server, run `docker compose exec app npm run enrich:google -- 400` after deploying. It's billed per place, and must be re-run after a rebuild.
 
 ## Data
 
