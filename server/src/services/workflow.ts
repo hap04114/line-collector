@@ -84,11 +84,13 @@ export async function planWorkflow(query: string, c: Ctx): Promise<Plan> {
     execute: async ({ inputData }) =>
       record("propose", { budgetCents: inputData.budgetCents, craving: inputData.craving ?? null }, async () => {
         const db = await getDb();
-        const near = nearestStations(c.lat, c.lon, 8);
         const collected = new Set<string>(inputData.memory.collected);
         const cands: any[] = [];
-        for (const n of near) {
-          const r = await findSpots(db, { stationId: n.station.id, budgetCents: inputData.budgetCents, craving: inputData.craving, homeRegions: c.homeRegions, userId: c.userId, limit: 3 });
+        // widen the search (budget, then distance) until there is something to check
+        for (const [budget, count] of [[inputData.budgetCents, 8], [Math.round(inputData.budgetCents * 1.6), 8], [Math.round(inputData.budgetCents * 1.6), 16]] as const) {
+          if (cands.length) break;
+        for (const n of nearestStations(c.lat, c.lon, count)) {
+          const r = await findSpots(db, { stationId: n.station.id, budgetCents: budget, craving: inputData.craving, homeRegions: c.homeRegions, userId: c.userId, limit: 3 });
           for (const s of r.food) {
             let score = 100 - n.distanceM / 40;
             const why: string[] = [];
@@ -98,6 +100,7 @@ export async function planWorkflow(query: string, c: Ctx): Promise<Plan> {
             if (s.partner) { score += 8; why.push("local partner"); }
             cands.push({ spotId: s.id, name: s.name, stationId: n.station.id, station: n.station.name, priceCents: s.priceCents, priceIsEstimate: s.priceSource === "estimate", hours: s.hours, openNow: s.openNow, nextChange: s.nextChange, lines: n.station.routes, walkMin: s.walkMin, score: Math.round(score), why });
           }
+        }
         }
         cands.sort((a, b) => b.score - a.score);
         return { ...inputData, candidates: cands.slice(0, 12) };
@@ -153,12 +156,13 @@ export async function planWorkflow(query: string, c: Ctx): Promise<Plan> {
         const via = stationById.get(p.stationId)!.routes.map((r) => routeById.get(r)?.short).join("/");
         const facts = {
           from: start.station.name, rideMin: ride, line: via, spot: p.name, station: p.station, price: `${p.priceIsEstimate ? "about " : ""}$${(p.priceCents / 100).toFixed(2)}`,
-          closes: p.nextChange, why: p.why, study: inputData.studyPick, relaxed: inputData.relaxed, minutes: inputData.minutes,
+          closes: p.nextChange, why: p.why, study: inputData.studyPick, minutes: inputData.minutes, budget: `$${(inputData.budgetCents / 100).toFixed(0)}`,
+          caveat: inputData.relaxed ? (p.priceCents > inputData.budgetCents ? "closest match is over the budget" : "hours could not be confirmed") : null,
         };
         if (geminiEnabled()) {
           try {
             const g = await generateJson<{ text: string }>({
-              prompt: `Write a friendly plan (max 70 words, numbered steps) for a Boston student using ONLY these checked facts. Don't add places or prices. Return JSON {"text": string}.\n${JSON.stringify(facts)}`,
+              prompt: `Write a friendly plan (max 70 words, numbered steps) for a Boston student using ONLY these checked facts. Order: ride, eat at the spot, then study (if any). If caveat is set, say it plainly in one short sentence. Don't add places, prices or times that aren't in the facts. Return JSON {"text": string}.\n${JSON.stringify(facts)}`,
               timeoutMs: 9000,
             });
             if (g.text) return { ...inputData, text: g.text, writtenBy: `Gemini (${config.gemini.model})` };
