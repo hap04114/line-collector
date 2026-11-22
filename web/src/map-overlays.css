@@ -11,3 +11,17 @@
 .live-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 800; color: #fff; background: #0C6B14; border-radius: 8px; padding: 6px 8px; }
 .live-dot { width: 8px; height: 8px; border-radius: 50%; background: #7CFC00; animation: lpblink 1.2s steps(2) infinite; }
 @media (prefers-reduced-motion: reduce) { .quest-pin { animation: none; } }
+
+/* mobile: give the map room */
+.layer-panel { max-height: calc(100vh - var(--safe-top) - 420px); min-height: 170px; overflow-y: auto; gap: 6px; padding: 10px; width: 214px; }
+.layer-panel .seg button { min-height: 34px; font-size: 13px; }
+.layer-panel .check { font-size: 13px; gap: 8px; }
+.layer-panel .check input { width: 20px; height: 20px; }
+@media (max-width: 600px) {
+  .nearest { display: none; }
+  div.quest-week { display: none; }
+  .quest-main { padding: 8px 10px; gap: 10px; }
+  .quest-icon { width: 36px; height: 36px; font-size: 22px; }
+  .quest-pts { font-size: 19px; }
+  .searchbar { min-height: 44px; font-size: 14px; }
+}
