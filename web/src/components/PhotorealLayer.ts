@@ -13,7 +13,10 @@
 import * as THREE from "three";
 import { MercatorCoordinate, type CustomLayerInterface, type Map as MLMap } from "maplibre-gl";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
-import { TilesRenderer } from "3d-tiles-renderer";
+import {
+  TilesRenderer, LRUCache, PriorityQueue, DownloadPriorityQueue,
+  DEFAULT_LRU_CACHE, DEFAULT_DOWNLOAD_QUEUE, DEFAULT_PARSE_QUEUE, DEFAULT_NODE_QUEUE,
+} from "3d-tiles-renderer";
 import { GoogleCloudAuthPlugin, GLTFExtensionsPlugin, TilesFadePlugin } from "3d-tiles-renderer/plugins";
 
 // Boston streets sit ~27 m below the WGS84 ellipsoid; lift the city so its streets meet the map's sea-level plane
@@ -24,18 +27,47 @@ const mLon = (lat: number) => 111_320 * Math.cos((lat * Math.PI) / 180);
 
 export type PhotoCredit = { logo: string; text: string };
 
+/**
+ * By default every TilesRenderer on the page shares one memory cache and one set of download queues.
+ * The main map's photoreal city then filled that cache while Street Runner was open on top, so the runner's
+ * city could not load a single tile (blank sky, "100%"). Each city gets its own cache and queues.
+ */
+export function giveOwnCaches(tiles: TilesRenderer, maxBytes?: number) {
+  const t = tiles as any, d = DEFAULT_LRU_CACHE as any;
+  const lru = new LRUCache() as any;
+  for (const k of ["minSize", "maxSize", "minBytesSize", "maxBytesSize", "unloadPercent", "unloadPriorityCallback"]) if (d[k] !== undefined) lru[k] = d[k];
+  if (maxBytes) { lru.maxBytesSize = maxBytes; lru.minBytesSize = Math.min(lru.minBytesSize ?? maxBytes, maxBytes * 0.75); }
+  t.lruCache = lru;
+  const dq = new DownloadPriorityQueue() as any;
+  dq.maxJobsPerOrigin = (DEFAULT_DOWNLOAD_QUEUE as any).maxJobsPerOrigin;
+  dq.priorityCallback = (DEFAULT_DOWNLOAD_QUEUE as any).priorityCallback;
+  t.downloadQueue = dq;
+  for (const [key, def] of [["parseQueue", DEFAULT_PARSE_QUEUE], ["processNodeQueue", DEFAULT_NODE_QUEUE]] as const) {
+    const q = new PriorityQueue() as any;
+    q.maxJobs = (def as any).maxJobs;
+    q.priorityCallback = (def as any).priorityCallback;
+    t[key] = q;
+  }
+}
+
 // one photoreal city per map: MapLibre drops custom layers on a style switch without calling onRemove, so a
 // second three.js renderer + tile set on the same canvas would leak and draw nothing. The same layer object is
 // handed back on every switch to Photoreal and simply re-added (instant: its tiles are still in memory).
 type Handlers = { onCredit: (c: PhotoCredit) => void; onFail: () => void };
-const perMap = new WeakMap<MLMap, CustomLayerInterface & { setHandlers: (h: Handlers) => void }>();
+type PhotoLayer = CustomLayerInterface & { setHandlers: (h: Handlers) => void; setPaused: (p: boolean) => void };
+const perMap = new WeakMap<MLMap, PhotoLayer>();
+
+/** Pause the main map's photoreal city (frees its tiles and GPU memory), e.g. while Street Runner is open. */
+export function setPhotorealPaused(map: MLMap | null, paused: boolean) {
+  if (map) perMap.get(map)?.setPaused(paused);
+}
 
 /** onFail fires if Google's tiles can't load (bad or restricted key, no network): the map falls back to Realistic. */
 export function createPhotorealLayer(map: MLMap, apiToken: string, handlers: Handlers, coarse: boolean): CustomLayerInterface {
   const existing = perMap.get(map);
   if (existing) { existing.setHandlers(handlers); return existing; }
   let h = handlers;
-  let rootLoaded = false, failed = false;
+  let rootLoaded = false, failed = false, paused = false;
   const fail = () => { if (!failed) { failed = true; h.onFail(); } };
   let renderer: THREE.WebGLRenderer | null = null;
   let tiles: TilesRenderer | null = null;
@@ -108,14 +140,38 @@ export function createPhotorealLayer(map: MLMap, apiToken: string, handlers: Han
       }
       renderer = new THREE.WebGLRenderer({ canvas: map.getCanvas(), context: gl as WebGL2RenderingContext });
       renderer.autoClear = false;
+      buildTiles();
+    },
+    render(gl: WebGLRenderingContext | WebGL2RenderingContext, args: any) {
+      renderFrame(gl, args);
+    },
+    setPaused(p: boolean) {
+      if (p === paused) return;
+      paused = p;
+      if (p) {
+        // free the city (downloads, cache and GPU memory) so another 3D view gets the whole budget
+        if (tiles) { scene.remove(tiles.group); tiles.dispose(); tiles = null; }
+      } else if (renderer && !failed) {
+        buildTiles();
+      }
+      map.triggerRepaint();
+    },
+    onRemove() {
+      // kept for the next switch back to Photoreal (see perMap); freed when the map itself goes away
+    },
+  } satisfies PhotoLayer;
+
+  function buildTiles() {
+    if (!renderer || paused) return;
       tiles = new TilesRenderer();
+      giveOwnCaches(tiles, coarse ? 160e6 : 320e6);
       tiles.registerPlugin(new GoogleCloudAuthPlugin({ apiToken, autoRefreshToken: true, useRecommendedSettings: false }));
       tiles.registerPlugin(new GLTFExtensionsPlugin({ dracoLoader: new DRACOLoader().setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.7/") }));
       tiles.registerPlugin(new TilesFadePlugin());
       // can't reach Google's city (key restricted to other sites, API off, offline): fall back instead of a blank map
       tiles.addEventListener("load-root-tileset", () => { rootLoaded = true; });
       tiles.addEventListener("load-error", () => { if (!rootLoaded) fail(); });
-      setTimeout(() => { if (!rootLoaded) fail(); }, 20000);
+      setTimeout(() => { if (!rootLoaded && !paused) fail(); }, 20000);
       tiles.errorTarget = coarse ? 14 : 8; // lower = sharper; phones trade a little detail for speed
       const maxAniso = renderer.capabilities.getMaxAnisotropy();
       const kick = () => { repaintUntil = performance.now() + 900; map.triggerRepaint(); };
@@ -136,9 +192,10 @@ export function createPhotorealLayer(map: MLMap, apiToken: string, handlers: Han
       const c = map.getCenter();
       recenter(c.lng, c.lat);
       kick();
-    },
-    render(gl: WebGLRenderingContext | WebGL2RenderingContext, args: any) {
-      if (!renderer || !tiles) return;
+  }
+
+  function renderFrame(gl: WebGLRenderingContext | WebGL2RenderingContext, args: any) {
+      if (!renderer || !tiles || paused) return;
       // keep the local frame near the view so the city and the map's overlays stay registered
       const c = map.getCenter();
       if (Math.hypot((c.lng - originLon) * mLon(originLat), (c.lat - originLat) * M_LAT) > RECENTER_M) recenter(c.lng, c.lat);
@@ -163,11 +220,8 @@ export function createPhotorealLayer(map: MLMap, apiToken: string, handlers: Han
         const at = tiles.getAttributions();
         h.onCredit({ logo: String(at.find((a) => a.type === "image")?.value ?? ""), text: at.filter((a) => a.type === "string").map((a) => String(a.value)).join(" ") });
       }
-    },
-    onRemove() {
-      // kept for the next switch back to Photoreal (see perMap); freed when the map itself goes away
-    },
-  } satisfies CustomLayerInterface & { setHandlers: (h: Handlers) => void };
+  }
+
   perMap.set(map, layer);
   map.once("remove", () => { tiles?.dispose(); tiles = null; renderer = null; perMap.delete(map); });
   return layer;

@@ -11,7 +11,7 @@ maplibregl.setWorkerUrl(workerUrl);
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { useQuest, useQuests, useStore } from "../store";
-import { createPhotorealLayer, type PhotoCredit } from "./PhotorealLayer";
+import { createPhotorealLayer, setPhotorealPaused, type PhotoCredit } from "./PhotorealLayer";
 import { GameLayer3D } from "./GameLayer3D";
 
 const STYLES = { photo: "https://tiles.openfreemap.org/styles/liberty", real: "https://tiles.openfreemap.org/styles/liberty", day: "https://tiles.openfreemap.org/styles/liberty", night: "https://tiles.openfreemap.org/styles/dark" };
@@ -132,6 +132,9 @@ export function MapView() {
   }, [show3d, loaded]);
   const sRef = useRef(s);
   sRef.current = s;
+  // Street Runner draws its own photoreal city full-screen: free the map's one meanwhile (memory, GPU, data)
+  const runnerOpen = s.panel === "run";
+  useEffect(() => { setPhotorealPaused(mapRef.current, runnerOpen); }, [runnerOpen, loaded]);
 
   // ---- create map once ------------------------------------------------------------
   useEffect(() => {
