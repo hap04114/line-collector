@@ -11,10 +11,29 @@ maplibregl.setWorkerUrl(workerUrl);
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { useQuest, useQuests, useStore } from "../store";
+import { createPhotorealLayer, type PhotoCredit } from "./PhotorealLayer";
 import { GameLayer3D } from "./GameLayer3D";
 
-const STYLES = { real: "https://tiles.openfreemap.org/styles/liberty", day: "https://tiles.openfreemap.org/styles/liberty", night: "https://tiles.openfreemap.org/styles/dark" };
+const STYLES = { photo: "https://tiles.openfreemap.org/styles/liberty", real: "https://tiles.openfreemap.org/styles/liberty", day: "https://tiles.openfreemap.org/styles/liberty", night: "https://tiles.openfreemap.org/styles/dark" };
 type Theme = keyof typeof STYLES;
+
+const COARSE = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
+
+/** Photoreal: Google's photorealistic 3D city replaces the base map; our lines, stations, labels and pins sit on top. */
+function applyPhotoreal(map: MLMap, key: string, onCredit: (c: PhotoCredit) => void, onFail: () => void) {
+  const layers = map.getStyle().layers;
+  const firstAbove = layers.find((l) => l.type !== "background")?.id;
+  for (const l of layers) {
+    try {
+      if (l.type === "background") map.setPaintProperty(l.id, "background-color", "#cfd6de");
+      else if (l.type !== "symbol") map.setLayoutProperty(l.id, "visibility", "none");
+    } catch { /* ignore */ }
+  }
+  if (!map.getLayer("lc-photoreal")) map.addLayer(createPhotorealLayer(map, key, { onCredit, onFail }, COARSE), firstAbove);
+  try {
+    (map as any).setSky({ "sky-color": "#79aee0", "horizon-color": "#eaddc7", "fog-color": "#e6dccb", "sky-horizon-blend": 0.55, "horizon-fog-blend": 0.65, "fog-ground-blend": 0.8, "atmosphere-blend": 0.7 });
+  } catch { /* older style spec */ }
+}
 
 /** Realistic look on top of the liberty style: real building materials, asphalt streets with lane paint,
  *  concrete sidewalks, real greens and water, a hazy sky at the horizon and sunlight that shades the buildings. */
@@ -82,15 +101,18 @@ export function MapView() {
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const [loaded, setLoaded] = useState(0); // bumps on every style load
-  // v2: Realistic is the default now; an older saved "Illustrated" choice shouldn't hide it
+  // v2 key: an older saved "Illustrated" choice shouldn't hide the new looks. Default: Photoreal on laptops
+  // (it needs the Google key; without one it draws as Realistic), Realistic on phones (lighter on data and battery)
   const [theme, setTheme] = useState<Theme>(() => {
     try {
       const t = localStorage.getItem("lc-theme-v2") as Theme | null;
-      return t && t in STYLES ? t : "real";
+      return t && t in STYLES ? t : COARSE ? "real" : "photo";
     } catch {
       return "real";
     }
   });
+  const tilesKey = s.config?.googleTilesKey ?? null;
+  const [gCredit, setGCredit] = useState<PhotoCredit | null>(null);
   const trains = useRef(new Map<string, { from: [number, number]; to: [number, number]; t0: number; color: string; route: string; label: string; bearing: number }>());
   const game = useRef<GameLayer3D | null>(null);
   const [show3d, setShow3d] = useState(() => {
@@ -127,6 +149,8 @@ export function MapView() {
       maxBounds: [[-71.42, 42.13], [-70.82, 42.53]],
       minZoom: 10.6,
       attributionControl: { compact: true },
+      // smoother edges (photoreal city, 3D buildings) on laptops; phones keep the faster default
+      canvasContextAttributes: { antialias: !COARSE },
     });
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
     map.on("style.load", () => setLoaded((n) => n + 1));
@@ -181,7 +205,14 @@ export function MapView() {
     const firstSymbol = map.getStyle().layers.find((l) => l.type === "symbol")?.id;
     // real 3D buildings from neighborhood zoom: realistic materials, or shaded by height (illustrated style)
     if (map.getLayer("building-3d")) map.setLayerZoomRange("building-3d", 13, 24);
-    if (theme === "real") applyRealistic(map);
+    const photoOn = theme === "photo" && !!sRef.current.config?.googleTilesKey;
+    if (photoOn) {
+      applyPhotoreal(map, sRef.current.config!.googleTilesKey!, setGCredit, () => {
+        setTheme("real");
+        sRef.current.toast("Photoreal map isn't available right now, showing Realistic");
+      });
+    }
+    else if (theme === "real" || theme === "photo") applyRealistic(map);
     else if (map.getLayer("building-3d")) {
       map.setPaintProperty("building-3d", "fill-extrusion-color", ["interpolate", ["linear"], ["coalesce", ["get", "render_height"], 8], 0, "#ece6dc", 20, "#ddd6ca", 60, "#c9cfd9", 150, "#aab6c8"]);
       map.setPaintProperty("building-3d", "fill-extrusion-opacity", 0.92);
@@ -205,7 +236,7 @@ export function MapView() {
       {
         id: "lc-campus-tint", type: "fill", source: "openmaptiles", "source-layer": "landuse",
         filter: ["in", ["get", "class"], ["literal", ["university", "college"]]],
-        paint: { "fill-color": "#c6ff3d", "fill-opacity": theme === "night" ? 0.1 : theme === "real" ? 0.07 : 0.16 },
+        paint: { "fill-color": "#c6ff3d", "fill-opacity": theme === "night" ? 0.1 : theme === "photo" ? 0 : theme === "real" ? 0.07 : 0.16 },
       },
       firstSymbol,
     );
@@ -447,6 +478,9 @@ export function MapView() {
   return (
     <>
       <div ref={el} className="map" aria-label="Map of Boston T stations" />
+      {theme === "photo" && tilesKey && gCredit && (
+        <div className="g-credit">{gCredit.logo && <img src={gCredit.logo} alt="Google" />}<span>{gCredit.text}</span></div>
+      )}
       <div style={{ position: "absolute", right: 10, bottom: "calc(var(--safe-bottom) + 236px)", zIndex: 4, display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
         {panel && (
           <div className="layer-panel">
@@ -455,10 +489,12 @@ export function MapView() {
               <button className={layers.is3d ? "on" : ""} onClick={() => setLayers({ ...layers, is3d: true })}>3D</button>
               <button className={!layers.is3d ? "on" : ""} onClick={() => setLayers({ ...layers, is3d: false })}>2D</button>
             </div>
-            <div className="seg" style={{ padding: 3 }}>
-              {([["real", "Realistic"], ["day", "Illustrated"], ["night", "Night"]] as const).map(([k, label]) => (
-                <button key={k} className={theme === k ? "on" : ""} onClick={() => setTheme(k)}>{label}</button>
-              ))}
+            <div className="seg style-grid" style={{ padding: 3 }}>
+              {([["photo", "📸 Photoreal"], ["real", "Realistic"], ["day", "Illustrated"], ["night", "Night"]] as const)
+                .filter(([k]) => k !== "photo" || tilesKey)
+                .map(([k, label]) => (
+                  <button key={k} className={theme === k ? "on" : ""} onClick={() => setTheme(k)}>{label}</button>
+                ))}
             </div>
             {([["trains", "Live trains"], ["campuses", "Campuses"], ["quests", "Quests"], ["delays", "Color lines by delay"]] as const).map(([k, label]) => (
               <label key={k} className="check"><input type="checkbox" checked={layers[k]} onChange={(e) => setLayers({ ...layers, [k]: e.target.checked })} /><span>{label}</span></label>
