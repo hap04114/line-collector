@@ -182,9 +182,10 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
   const homeStations = s.config?.schools.find((c) => c.id === s.me?.user?.school?.id)?.homeStations ?? [];
   const [look, setLook] = useState<"real" | "color" | "photo">(() => {
     try {
-      return (localStorage.getItem("lc-runner-look") as "real" | "color" | "photo") || "real";
+      // v2: Photoreal is the default now; an older saved "real" choice should not hide it
+      return (localStorage.getItem("lc-runner-look-v2") as "real" | "color" | "photo") || "photo";
     } catch {
-      return "real";
+      return "photo";
     }
   });
   const [line, setLine] = useState(() => s.stationById.get(homeStations[0] ?? "")?.routes[0] ?? "Green-B");
@@ -610,27 +611,45 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
     const world = new THREE.Group(); // holds the tiles; slid each frame so the runner stays at the origin
     let photoR: THREE.WebGLRenderer | null = null, pcam: THREE.PerspectiveCamera | null = null, tiles: TilesRenderer | null = null;
     let photoCanvas: HTMLCanvasElement | null = null;
+    const lookAhead = new THREE.PerspectiveCamera(60, 1, 1, 6000);
     const fg = new THREE.Scene();
-    let groundY = -26, groundFound = false, groundT = 0, creditT = 0; // Boston streets sit ~26 m under the WGS84 ellipsoid
+    let groundY = -26, groundFound = false, groundT = 0, creditT = 0, photoWaitUntil = Infinity, streetSince = 0, loadT = 0; // Boston streets sit ~26 m under the WGS84 ellipsoid
     const ray = new THREE.Raycaster(), down = new THREE.Vector3(0, -1, 0), rayFrom = new THREE.Vector3(0, 400, 0);
     const onResize = () => {
       if (!photoR || !pcam || !el.current) return;
       photoR.setSize(el.current.clientWidth, el.current.clientHeight, false);
       pcam.aspect = el.current.clientWidth / Math.max(1, el.current.clientHeight);
       pcam.updateProjectionMatrix();
+      lookAhead.aspect = pcam.aspect;
+      lookAhead.updateProjectionMatrix();
+      tiles?.setResolutionFromRenderer(pcam, photoR);
+      tiles?.setResolution(lookAhead, el.current.clientWidth * 0.6, el.current.clientHeight * 0.6);
     };
     if (photo) {
       photoCanvas = document.createElement("canvas");
       photoCanvas.className = "sr-photo";
       el.current.appendChild(photoCanvas);
       photoR = new THREE.WebGLRenderer({ canvas: photoCanvas, antialias: true, powerPreference: "high-performance" });
-      photoR.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      // sharp on laptops, still smooth on phones
+      photoR.setPixelRatio(Math.min(window.devicePixelRatio, touchScreen ? 1.75 : 2));
       pcam = new THREE.PerspectiveCamera(60, 1, 1, 6000);
       onResize();
       scene.background = new THREE.Color(0xb9d2ea);
       scene.fog = new THREE.Fog(0xd9e0e6, 650, 3000);
       tiles = new TilesRenderer();
-      tiles.registerPlugin(new GoogleCloudAuthPlugin({ apiToken: tilesKey!, autoRefreshToken: true }));
+      tiles.registerPlugin(new GoogleCloudAuthPlugin({ apiToken: tilesKey!, autoRefreshToken: true, useRecommendedSettings: false }));
+      // lower error target = more detailed tiles (Google's recommended 20 is built to save data)
+      tiles.errorTarget = touchScreen ? 10 : 6;
+      // crisp streets at a low viewing angle: full anisotropic filtering on every tile texture
+      const maxAniso = photoR.capabilities.getMaxAnisotropy();
+      tiles.addEventListener("load-model", ({ scene: model }: any) => {
+        model.traverse((o: any) => {
+          for (const m of [].concat(o.material ?? [])) {
+            const map = (m as any).map;
+            if (map) { map.anisotropy = maxAniso; map.needsUpdate = true; }
+          }
+        });
+      });
       tiles.registerPlugin(new GLTFExtensionsPlugin({ dracoLoader: new DRACOLoader().setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.7/") }));
       tiles.registerPlugin(new TilesFadePlugin());
       // Earth-centered coordinates -> local meters at the start (x east, y up, -z north), like the rest of the game
@@ -645,6 +664,9 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       photoR.autoClear = false;
       tiles.setCamera(pcam);
       tiles.setResolutionFromRenderer(pcam, photoR);
+      // an invisible camera ~100 m ahead preloads the street you're about to run into
+      tiles.setCamera(lookAhead);
+      tiles.setResolution(lookAhead, el.current.clientWidth * 0.6, el.current.clientHeight * 0.6);
       window.addEventListener("resize", onResize);
     }
     const renderPhoto = (dt: number) => {
@@ -671,6 +693,17 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
         if (g !== null) { groundY = groundFound ? groundY + (g - groundY) * 0.5 : g; groundFound = true; }
       }
       world.position.set(-(me.lon - lon0) * mLon(lat0), -groundY, (me.lat - lat0) * M_LAT);
+      if (mapReady && goAt === Infinity) {
+        // wait until the street is found and every tile around the start has finished downloading
+        // (Google sends a blurry city first, then sharper tiles), or 20 s at most
+        const now = performance.now(), prog = tiles.loadProgress;
+        if (groundFound && prog >= 0.999) streetSince = streetSince || now; else streetSince = 0;
+        loadT += dt;
+        if (loadT > 0.4) { loadT = 0; setFlash(`📸 Loading real Boston in 3D… ${Math.round(prog * 100)}%`); }
+        if ((streetSince && now - streetSince > 600) || now > photoWaitUntil) {
+          goAt = now + 3000; state.t0 = goAt; setFlash(null);
+        }
+      }
       // third-person camera behind and above the runner
       const b = (state.bearing * Math.PI) / 180, fx = Math.sin(b), fz = -Math.cos(b), rx = Math.cos(b), rz = Math.sin(b);
       const side = -state.x * 0.5;
@@ -678,6 +711,10 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
       pcam.position.set(-fx * 16 + rx * side, 12, -fz * 16 + rz * side);
       pcam.lookAt(fx * 20 + rx * side, 1, fz * 20 + rz * side);
       pcam.updateMatrixWorld();
+      const aheadM = 100 + state.speed * 1.5;
+      lookAhead.position.set(fx * aheadM, 12, fz * aheadM);
+      lookAhead.lookAt(fx * (aheadM + 40), 1, fz * (aheadM + 40));
+      lookAhead.updateMatrixWorld();
       tiles.update();
       photoR.clear();
       photoR.render(scene, pcam);
@@ -693,7 +730,9 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
 
     map.on("load", () => {
       mapReady = true;
-      goAt = performance.now() + 3000;
+      // Photoreal waits for Google's 3D city to reach street level before the 3-2-1 (15 s at most)
+      if (photo) { photoWaitUntil = performance.now() + 20000; setFlash("📸 Loading real Boston in 3D…"); }
+      else goAt = performance.now() + 3000;
       state.t0 = goAt;
       // a prettier real city: brick and brownstone low-rise, sandstone mid-rise, glass towers
       if (map.getLayer("building-3d")) {
@@ -1016,7 +1055,7 @@ export function StreetRunner({ onClose }: { onClose: () => void }) {
           )}
           <div className="seg" style={{ padding: 3 }}>
             {(tilesKey ? (["photo", "real", "color"] as const) : (["real", "color"] as const)).map((v) => (
-              <button key={v} className={look === v ? "on" : ""} onClick={() => { autoStart.current = false; setLook(v); setPhase("ready"); try { localStorage.setItem("lc-runner-look", v); } catch { /* ignore */ } }}>
+              <button key={v} className={look === v ? "on" : ""} onClick={() => { autoStart.current = false; setLook(v); setPhase("ready"); try { localStorage.setItem("lc-runner-look-v2", v); } catch { /* ignore */ } }}>
                 {v === "photo" ? "📸 Photoreal" : v === "real" ? "🏙️ Real city" : "🍬 Colorful"}
               </button>
             ))}
