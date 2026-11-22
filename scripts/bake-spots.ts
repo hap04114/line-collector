@@ -94,8 +94,9 @@ function estimatePrice(tags: any, cuisines: string[]): number {
   const known = cuisines.map((c) => CUISINE_PRICE[c]).filter(Boolean);
   if (known.length) {
     const base = Math.min(...known);
-    // sit-down restaurants run a little higher than counters for the same cuisine
-    return tags.amenity === "restaurant" ? Math.round(base * 1.1 / 50) * 50 : base;
+    // counters run cheaper than sit-down restaurants for the same cuisine
+    const scale = tags.amenity === "restaurant" ? 1.1 : tags.amenity === "fast_food" || tags.amenity === "food_court" ? 0.75 : 0.85;
+    return Math.round((base * scale) / 50) * 50;
   }
   return AMENITY_PRICE[tags.amenity] ?? AMENITY_PRICE[tags.shop] ?? 1500;
 }
