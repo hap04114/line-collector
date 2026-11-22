@@ -171,7 +171,14 @@ export function createPhotorealLayer(map: MLMap, apiToken: string, handlers: Han
       // can't reach Google's city (key restricted to other sites, API off, offline): fall back instead of a blank map
       tiles.addEventListener("load-root-tileset", () => { rootLoaded = true; });
       tiles.addEventListener("load-error", () => { if (!rootLoaded) fail(); });
-      setTimeout(() => { if (!rootLoaded && !paused) fail(); }, 20000);
+      // give up after 20 s of the tab being visible: a hidden tab draws no frames, so tiles never start loading
+      // there, and a plain timer would fall back to Realistic before the student even looks at the map
+      let visibleMs = 0;
+      const watchdog = setInterval(() => {
+        if (rootLoaded || paused || failed) { clearInterval(watchdog); return; }
+        if (!document.hidden) visibleMs += 1000;
+        if (visibleMs >= 20000) { clearInterval(watchdog); fail(); }
+      }, 1000);
       tiles.errorTarget = coarse ? 14 : 8; // lower = sharper; phones trade a little detail for speed
       const maxAniso = renderer.capabilities.getMaxAnisotropy();
       const kick = () => { repaintUntil = performance.now() + 900; map.triggerRepaint(); };
