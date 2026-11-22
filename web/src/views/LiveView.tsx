@@ -74,6 +74,13 @@ function ListingCheck() {
           ))}
           {res.typicalRent && <div className="small muted">Typical rent: ${Math.round(res.typicalRent.median).toLocaleString()} · {res.typicalRent.source}</div>}
           {res.guidance && <a className="btn sm ghost" href={res.guidance} target="_blank" rel="noreferrer">Massachusetts broker-fee guidance ↗</a>}
+          {res.flags.some((f: any) => f.severity === "high") && (
+            <div className="banner small">
+              <b>Already paid or shared personal info?</b> Report it:{" "}
+              <a href="https://www.ic3.gov/" target="_blank" rel="noreferrer">FBI Internet Crime Complaint Center ↗</a> ·{" "}
+              <a href="https://www.mass.gov/how-to/file-a-consumer-complaint" target="_blank" rel="noreferrer">Massachusetts Attorney General ↗</a>. Contact your bank right away if you sent money.
+            </div>
+          )}
           <div className="tiny muted">{res.disclaimer} Checked by {res.checkedBy}. Line Collector never passes messages between students and brokers.</div>
         </div>
       )}
